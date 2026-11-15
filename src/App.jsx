@@ -1,40 +1,35 @@
 import React, { useEffect, useState } from "react";
 import {
-  Smartphone, Wifi, Tv, Zap, GraduationCap, Gift,
-  ArrowUpRight, ShieldCheck, Menu, Globe, Headphones,
-  User, LogOut, Wallet, RefreshCw, CheckCircle, XCircle
+  Smartphone,
+  Wifi,
+  Tv,
+  Zap,
+  GraduationCap,
+  Gift,
+  ShieldCheck,
+  Headphones,
+  Wallet,
+  LogOut,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Menu,
+  User,
 } from "lucide-react";
 import { supabase } from "./supabase";
 
-const services = [
-  { name: "Buy Airtime", detail: "Recharge any supported network", icon: Smartphone },
-  { name: "Buy Data", detail: "Affordable data bundles", icon: Wifi },
-  { name: "Data Gifting", detail: "Send data to another number", icon: Gift },
-  { name: "Electricity", detail: "Pay your electricity bills", icon: Zap },
-  { name: "Cable TV", detail: "Renew your TV subscription", icon: Tv },
-  { name: "Exam Pins", detail: "Education PINs and vouchers", icon: GraduationCap }
-];
+const WHATSAPP = "https://wa.me/2348114095631";
 
-const money = value =>
-  Number(value || 0).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-
-function App() {
+export default function App() {
   const [session, setSession] = useState(null);
-  const [mode, setMode] = useState("login");
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [profile, setProfile] = useState(null);
   const [balance, setBalance] = useState(0);
   const [deposits, setDeposits] = useState([]);
-  const [adminDeposits, setAdminDeposits] = useState([]);
-  const [depositAmount, setDepositAmount] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
-  const [depositLoading, setDepositLoading] = useState(false);
-  const [adminLoading, setAdminLoading] = useState(false);
+  const [pendingDeposits, setPendingDeposits] = useState([]);
+  const [page, setPage] = useState("home");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
 
   const [form, setForm] = useState({
     full_name: "",
@@ -43,869 +38,727 @@ function App() {
     phone: "",
     email: "",
     password: "",
-    confirmPassword: ""
+  });
+
+  const [depositForm, setDepositForm] = useState({
+    amount: "",
+    reference: "",
   });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      setLoading(false);
+      if (data.session) loadAccount(data.session.user);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
-        setSession(newSession);
-        setLoading(false);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (newSession) loadAccount(newSession.user);
+      else {
+        setProfile(null);
+        setBalance(0);
+        setDeposits([]);
+        setPendingDeposits([]);
       }
-    );
+    });
 
-    return () => listener.subscription.unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function loadAccount() {
-    if (!session?.user) return;
+  async function loadAccount(user) {
+    if (!user) return;
 
-    const userId = session.user.id;
-
-    const { data: profileData, error: profileError } = await supabase
+    const { data: profileData } = await supabase
       .from("profiles")
-      .select("full_name, username, gender, phone, role")
-      .eq("id", userId)
+      .select("*")
+      .eq("id", user.id)
       .maybeSingle();
-
-    if (profileError) {
-      setMessage(profileError.message);
-      return;
-    }
-
-    const { data: walletData, error: walletError } = await supabase
-      .from("wallets")
-      .select("balance")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (walletError) {
-      setMessage(walletError.message);
-      return;
-    }
-
-    const { data: depositData, error: depositError } = await supabase
-      .from("deposits")
-      .select("id, amount, status, payment_reference, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (depositError) {
-      setMessage(depositError.message);
-      return;
-    }
 
     setProfile(profileData);
+
+    const { data: walletData } = await supabase
+      .from("wallets")
+      .select("balance")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
     setBalance(Number(walletData?.balance || 0));
+
+    const { data: depositData } = await supabase
+      .from("deposits")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
     setDeposits(depositData || []);
+
+    if (profileData?.role === "admin") {
+      loadPendingDeposits();
+    }
   }
 
-  useEffect(() => {
-    if (session?.user) {
-      loadAccount();
-    } else {
-      setProfile(null);
-      setBalance(0);
-      setDeposits([]);
-      setAdminDeposits([]);
-    }
-  }, [session]);
+  async function register(e) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
 
-  useEffect(() => {
-    if (session && profile?.role === "admin") {
-      loadAdminDeposits();
+    if (
+      !form.full_name ||
+      !form.username ||
+      !form.gender ||
+      !form.phone ||
+      !form.email ||
+      !form.password
+    ) {
+      setMessage("Please complete all fields.");
+      setLoading(false);
+      return;
     }
-  }, [session, profile]);
 
-  function updateForm(event) {
-    setForm({
-      ...form,
-      [event.target.name]: event.target.value
+    if (form.password.length < 6) {
+      setMessage("Password must contain at least 6 characters.");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.signUp({
+      email: form.email.trim(),
+      password: form.password,
+      options: {
+        data: {
+          full_name: form.full_name.trim(),
+          username: form.username.trim(),
+          gender: form.gender,
+          phone: form.phone.trim(),
+        },
+      },
     });
-  }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setMessage("");
-
-    if (busy) return;
-
-    if (mode === "register") {
-      if (form.password !== form.confirmPassword) {
-        setMessage("Your passwords do not match.");
-        return;
-      }
-
-      if (form.password.length < 6) {
-        setMessage("Password must contain at least 6 characters.");
-        return;
-      }
-
-      if (
-        !form.full_name.trim() ||
-        !form.username.trim() ||
-        !form.phone.trim() ||
-        !form.gender
-      ) {
-        setMessage("Please complete all required fields.");
-        return;
-      }
-    }
-
-    setBusy(true);
-
-    try {
-      if (mode === "register") {
-        const { data, error } = await supabase.auth.signUp({
-          email: form.email.trim(),
-          password: form.password,
-          options: {
-            data: {
-              full_name: form.full_name.trim(),
-              username: form.username.trim(),
-              gender: form.gender,
-              phone: form.phone.trim()
-            },
-            emailRedirectTo:
-              "https://gbolahun455-cyber.github.io/sodiq-telecom-services-2027/"
-          }
-        });
-
-        if (error) throw error;
-
-        if (data.session) {
-          setMessage("Account created successfully!");
-        } else {
-          setMessage(
-            "Registration successful! Check your email for the confirmation link before logging in."
-          );
-          setMode("login");
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: form.email.trim(),
-          password: form.password
-        });
-
-        if (error) throw error;
-
-        setMessage("Login successful!");
-      }
-    } catch (error) {
-      setMessage(error.message || "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitDeposit(event) {
-    event.preventDefault();
-    setMessage("");
-
-    const amount = Number(depositAmount);
-
-    if (!Number.isFinite(amount) || amount < 100) {
-      setMessage("The minimum deposit request is ₦100.");
-      return;
-    }
-
-    if (!paymentReference.trim()) {
-      setMessage("Enter your OPay payment reference.");
-      return;
-    }
-
-    setDepositLoading(true);
-
-    try {
-      const { error } = await supabase.from("deposits").insert({
-        user_id: session.user.id,
-        amount,
-        status: "pending",
-        payment_reference: paymentReference.trim()
-      });
-
-      if (error) throw error;
-
-      setMessage("Deposit request submitted! Await admin verification.");
-      setDepositAmount("");
-      setPaymentReference("");
-      await loadAccount();
-    } catch (error) {
-      setMessage(error.message || "Could not submit deposit request.");
-    } finally {
-      setDepositLoading(false);
-    }
-  }
-
-  async function loadAdminDeposits() {
-    setAdminLoading(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-deposits",
-        {
-          body: { action: "list" }
-        }
-      );
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setAdminDeposits(data.deposits || []);
-    } catch (error) {
-      setMessage("Admin request failed: " + error.message);
-    } finally {
-      setAdminLoading(false);
-    }
-  }
-
-  async function processDeposit(depositId, action) {
-    const confirmed = window.confirm(
-      `Are you sure you want to ${action} this deposit?`
-    );
-
-    if (!confirmed) return;
-
-    setMessage("");
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-deposits",
-        {
-          body: {
-            action,
-            depositId
-          }
-        }
-      );
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
+    if (error) {
+      setMessage(error.message);
+    } else {
       setMessage(
-        action === "approve"
-          ? "Deposit approved and wallet credited successfully."
-          : "Deposit rejected successfully."
+        "Registration submitted! Check your email for a confirmation link if email confirmation is enabled."
       );
-
-      await loadAdminDeposits();
-    } catch (error) {
-      setMessage("Could not process deposit: " + error.message);
+      setPage("login");
     }
+
+    setLoading(false);
   }
 
-  async function handleLogout() {
-    const { error } = await supabase.auth.signOut();
+  async function login(e) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: form.email.trim(),
+      password: form.password,
+    });
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      await loadAccount(data.user);
+      setPage("dashboard");
+    }
+
+    setLoading(false);
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setPage("home");
+    setMessage("");
+  }
+
+  async function submitDeposit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    const amount = Number(depositForm.amount);
+
+    if (!amount || amount <= 0) {
+      setMessage("Enter a valid deposit amount.");
+      setLoading(false);
+      return;
+    }
+
+    if (!depositForm.reference.trim()) {
+      setMessage("Enter your OPay transfer reference.");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.from("deposits").insert({
+      user_id: session.user.id,
+      amount,
+      payment_reference: depositForm.reference.trim(),
+      status: "pending",
+    });
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Deposit request submitted. Awaiting admin verification.");
+      setDepositForm({ amount: "", reference: "" });
+      await loadAccount(session.user);
+      setPage("dashboard");
+    }
+
+    setLoading(false);
+  }
+
+  async function loadPendingDeposits() {
+    const { data, error } = await supabase.functions.invoke(
+      "admin-deposits",
+      {
+        body: { action: "list" },
+      }
+    );
 
     if (error) {
       setMessage(error.message);
       return;
     }
 
-    setMessage("You have logged out.");
-    setMode("login");
+    if (data?.error) {
+      setMessage(data.error);
+      return;
+    }
+
+    setPendingDeposits(data?.deposits || []);
+  }
+
+  async function processDeposit(depositId, action) {
+    const confirmed = window.confirm(
+      action === "approve"
+        ? "Have you verified that this payment was received in your OPay account?"
+        : "Reject this deposit request?"
+    );
+
+    if (!confirmed) return;
+
+    setLoading(true);
+    setMessage("");
+
+    const { data, error } = await supabase.functions.invoke(
+      "admin-deposits",
+      {
+        body: {
+          action,
+          depositId,
+        },
+      }
+    );
+
+    if (error) {
+      setMessage(error.message);
+    } else if (data?.error) {
+      setMessage(data.error);
+    } else {
+      setMessage(`Deposit ${action}d successfully.`);
+      await loadPendingDeposits();
+    }
+
+    setLoading(false);
+  }
+
+  const money = (value) =>
+    "₦" + Number(value || 0).toLocaleString("en-NG", {
+      minimumFractionDigits: 2,
+    });
+
+  const buttonStyle = {
+    background: "#d6a832",
+    color: "#111",
+    border: "none",
+    padding: "13px 20px",
+    borderRadius: "9px",
+    fontWeight: "bold",
+    cursor: "pointer",
+  };
+
+  const inputStyle = {
+    width: "100%",
+    padding: "13px",
+    margin: "7px 0 14px",
+    borderRadius: "8px",
+    border: "1px solid #555",
+    background: "#171717",
+    color: "white",
+    boxSizing: "border-box",
+  };
+
+  const cardStyle = {
+    background: "#171717",
+    border: "1px solid #393027",
+    borderRadius: "13px",
+    padding: "18px",
+    marginBottom: "15px",
+  };
+
+  function go(destination) {
+    setPage(destination);
+    setMessage("");
+    setShowMenu(false);
   }
 
   return (
-    <div className="app">
-      <style>{`
-        .account-section {
-          padding: 75px 7%;
-          background: #0b0b0b;
-          color: #fff;
-        }
-        .account-box, .dashboard-card {
-          max-width: 850px;
-          margin: auto;
-          padding: 32px;
-          border: 1px solid rgba(212,175,55,.35);
-          border-radius: 18px;
-          background: #141414;
-        }
-        .account-box { max-width: 520px; }
-        .account-box h2, .dashboard-card h2 {
-          font-size: 28px;
-          margin-bottom: 10px;
-        }
-        .account-box p, .dashboard-card p {
-          color: #aaa;
-          line-height: 1.6;
-        }
-        .account-form {
-          display: grid;
-          gap: 14px;
-          margin-top: 24px;
-        }
-        .account-form input, .account-form select,
-        .deposit-form input {
-          width: 100%;
-          padding: 15px;
-          border: 1px solid #444;
-          border-radius: 9px;
-          background: #090909;
-          color: white;
-          font-size: 15px;
-          box-sizing: border-box;
-        }
-        .account-form button, .account-action,
-        .deposit-form button {
-          padding: 15px;
-          border: none;
-          border-radius: 9px;
-          background: #d4af37;
-          color: #111;
-          font-weight: bold;
-          cursor: pointer;
-        }
-        button:disabled { opacity: .6; cursor: not-allowed; }
-        .account-switch {
-          margin-top: 20px;
-          color: #d4af37;
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 15px;
-        }
-        .account-message {
-          margin-top: 18px;
-          padding: 12px;
-          border-radius: 8px;
-          background: #24200f;
-          color: #f2d675;
-          overflow-wrap: anywhere;
-        }
-        .wallet-card {
-          margin: 25px 0;
-          padding: 25px;
-          border-radius: 14px;
-          background: linear-gradient(120deg,#3b3011,#17130a);
-        }
-        .wallet-card strong {
-          display: block;
-          font-size: 32px;
-          margin-top: 10px;
-          color: #f2d675;
-        }
-        .dashboard-actions {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          margin-top: 20px;
-        }
-        .dashboard-actions button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .deposit-panel, .admin-panel {
-          margin-top: 30px;
-          padding: 24px;
-          border: 1px solid #393939;
-          border-radius: 14px;
-          background: #101010;
-        }
-        .deposit-panel h3, .admin-panel h3 {
-          color: #f2d675;
-          margin-top: 0;
-        }
-        .bank-details {
-          padding: 18px;
-          margin: 18px 0;
-          background: #201b0c;
-          border: 1px solid #66521b;
-          border-radius: 10px;
-          line-height: 1.9;
-        }
-        .deposit-form {
-          display: grid;
-          gap: 12px;
-          margin-top: 18px;
-        }
-        .deposit-list {
-          display: grid;
-          gap: 12px;
-          margin-top: 18px;
-        }
-        .deposit-item {
-          padding: 16px;
-          border: 1px solid #333;
-          border-radius: 10px;
-          background: #191919;
-          overflow-wrap: anywhere;
-        }
-        .deposit-item strong { color: #f2d675; }
-        .status {
-          display: inline-block;
-          margin-top: 8px;
-          padding: 5px 10px;
-          border-radius: 20px;
-          font-size: 12px;
-          text-transform: uppercase;
-          background: #302a14;
-          color: #f2d675;
-        }
-        .status.approved { background: #12321e; color: #8be0a6; }
-        .status.rejected { background: #391818; color: #ff9b9b; }
-        .admin-buttons {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-top: 14px;
-        }
-        .approve-btn, .reject-btn {
-          border: none;
-          border-radius: 8px;
-          padding: 11px 15px;
-          cursor: pointer;
-          font-weight: bold;
-        }
-        .approve-btn { background: #1b6a37; color: white; }
-        .reject-btn { background: #812929; color: white; }
-        .refresh-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 14px;
-          border: 1px solid #d4af37;
-          border-radius: 8px;
-          background: transparent;
-          color: #f2d675;
-          cursor: pointer;
-        }
-        @media(max-width:600px) {
-          .account-section { padding: 45px 5%; }
-          .account-box, .dashboard-card { padding: 22px; }
-        }
-      `}</style>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#090909",
+        color: "#fff",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <header
+        style={{
+          padding: "17px 5%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid #302719",
+          background: "#101010",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+        }}
+      >
+        <div
+          onClick={() => go("home")}
+          style={{ cursor: "pointer", fontWeight: "bold", fontSize: "19px" }}
+        >
+          <span style={{ color: "#d6a832" }}>SODIQ</span> TELECOM
+        </div>
 
-      <header className="topbar">
-        <a className="brand" href="#">
-          <span className="brand-icon">S</span>
-          <span>
-            <strong>SODIQ <b>TELECOM</b></strong>
-            <small>SERVICES 2027</small>
-          </span>
-        </a>
-
-        <nav>
-          <a href="#home">Home</a>
-          <a href="#services">Services</a>
-          <a href="#about">About</a>
-          <a href="#support">Support</a>
-        </nav>
-
-        <a className="login-btn" href="#account">
-          {session ? "My Account" : "Get Started"}
-          <ArrowUpRight size={16} />
-        </a>
-        <button className="menu-btn" aria-label="Menu"><Menu /></button>
+        <button
+          onClick={() => setShowMenu(!showMenu)}
+          style={{
+            background: "transparent",
+            color: "#d6a832",
+            border: "none",
+          }}
+        >
+          <Menu size={25} />
+        </button>
       </header>
 
-      <main>
-        <section className="hero" id="home">
-          <div className="hero-content">
-            <div className="eyebrow">
-              <span className="live-dot"></span>
-              THE NEXT GENERATION OF DIGITAL SERVICES
-            </div>
-
-            <h1>
-              Your Digital Life.<br />
-              <span>One Platform.</span>
-            </h1>
-
-            <p>
-              Welcome to a smarter way to stay connected.
-              Explore digital services, manage transactions
-              and enjoy a simpler experience.
-            </p>
-
-            <div className="hero-actions">
-              <a href="#services" className="gold-btn">
-                Explore Services <ArrowUpRight size={18} />
-              </a>
-              <a href="#about" className="outline-btn">Discover SODIQ</a>
-            </div>
-
-            <div className="hero-note">
-              <ShieldCheck size={17} />
-              Built for a smarter digital experience
-            </div>
-          </div>
-
-          <div className="hero-visual">
-            <div className="orbit orbit-one"></div>
-            <div className="orbit orbit-two"></div>
-            <div className="logo-glow"><span>S</span></div>
-            <div className="floating-card card-top">
-              <Wifi size={18} /><span>Stay Connected</span>
-            </div>
-            <div className="floating-card card-bottom">
-              <ShieldCheck size={18} /><span>Digital Convenience</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="stats">
-          <div><strong>01</strong><span>One platform</span></div>
-          <div><strong>24/7</strong><span>Digital access</span></div>
-          <div><strong>₦</strong><span>Naira payments</span></div>
-          <div><strong>∞</strong><span>Possibilities</span></div>
-        </section>
-
-        <section className="services-section" id="services">
-          <div className="section-heading">
-            <div>
-              <span className="section-label">WHAT WE OFFER</span>
-              <h2>Explore Our <span>Services</span></h2>
-              <p>Everyday digital services, brought together in one place.</p>
-            </div>
-            <span className="service-count">OUR SERVICE HUB / 2027</span>
-          </div>
-
-          <div className="service-grid">
-            {services.map((service, index) => {
-              const Icon = service.icon;
-              return (
-                <article className="service-card" key={service.name}>
-                  <div className="service-number">0{index + 1}</div>
-                  <div className="service-icon"><Icon size={25} /></div>
-                  <h3>{service.name}</h3>
-                  <p>{service.detail}</p>
-                  <span className="service-arrow"><ArrowUpRight size={19} /></span>
-                </article>
-              );
-            })}
-          </div>
-
-          <p className="catalogue-note">
-            Service availability and supported products will be confirmed before transactions are enabled.
-          </p>
-        </section>
-
-        <section className="divisions" id="about">
-          <span className="section-label">THE SODIQ ECOSYSTEM</span>
-          <h2>More Than A <span>Telecom Platform.</span></h2>
-          <p className="division-intro">
-            A connected ecosystem designed for customers, businesses and developers.
-          </p>
-
-          <div className="division-grid">
-            <a href="/business" className="division-card">
-              <Globe size={25} />
-              <h3>SODIQ BUSINESS</h3>
-              <p>Business and reseller services.</p>
-              <ArrowUpRight />
-            </a>
-            <a href="/developers" className="division-card">
-              <Smartphone size={25} />
-              <h3>SODIQ API HUB</h3>
-              <p>Tools and integrations for developers.</p>
-              <ArrowUpRight />
-            </a>
-            <a href="#account" className="division-card">
-              <ShieldCheck size={25} />
-              <h3>SODIQ ADMIN</h3>
-              <p>Central platform administration.</p>
-              <ArrowUpRight />
-            </a>
-          </div>
-        </section>
-
-        <section className="account-section" id="account">
-          {loading ? (
-            <div className="account-box">
-              <p>Checking your account...</p>
-            </div>
-          ) : session ? (
-            <div className="dashboard-card">
-              <span className="section-label">
-                {profile?.role === "admin" ? "ADMIN DASHBOARD" : "CUSTOMER DASHBOARD"}
-              </span>
-
-              <h2>Welcome, {profile?.full_name || session.user.email}</h2>
-              <p>Your SODIQ TELECOM account is active.</p>
-
-              <div className="wallet-card">
-                <Wallet size={25} />
-                <p>WALLET BALANCE</p>
-                <strong>₦{money(balance)}</strong>
-              </div>
-
-              <p>Username: {profile?.username || "Loading..."}</p>
-              <p>Email: {session.user.email}</p>
-
-              <div className="deposit-panel">
-                <h3>Fund Your Wallet</h3>
-                <p>Transfer to the OPay account below. Your wallet is credited only after admin verification.</p>
-
-                <div className="bank-details">
-                  <strong>Bank:</strong> OPay<br />
-                  <strong>Account Number:</strong> 8114095631<br />
-                  <strong>Account Name:</strong> Ogunlowo Sodiq Ayomiposi
-                </div>
-
-                <form className="deposit-form" onSubmit={submitDeposit}>
-                  <input
-                    type="number"
-                    min="100"
-                    step="1"
-                    placeholder="Enter deposit amount (₦)"
-                    value={depositAmount}
-                    onChange={e => setDepositAmount(e.target.value)}
-                    required
-                  />
-
-                  <input
-                    type="text"
-                    placeholder="OPay transfer reference"
-                    value={paymentReference}
-                    onChange={e => setPaymentReference(e.target.value)}
-                    required
-                  />
-
-                  <button type="submit" disabled={depositLoading}>
-                    {depositLoading ? "Submitting..." : "Submit Deposit Request"}
-                  </button>
-                </form>
-              </div>
-
-              <div className="deposit-panel">
-                <h3>My Deposit History</h3>
-
-                {deposits.length === 0 ? (
-                  <p>You have not made any deposit requests yet.</p>
-                ) : (
-                  <div className="deposit-list">
-                    {deposits.map(deposit => (
-                      <div className="deposit-item" key={deposit.id}>
-                        <strong>₦{money(deposit.amount)}</strong>
-                        <p>Reference: {deposit.payment_reference || "Not provided"}</p>
-                        <p>
-                          Date: {new Date(deposit.created_at).toLocaleString()}
-                        </p>
-                        <span className={`status ${deposit.status}`}>
-                          {deposit.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
+      {showMenu && (
+        <nav
+          style={{
+            padding: "15px 5%",
+            background: "#171717",
+            display: "grid",
+            gap: "12px",
+          }}
+        >
+          <button style={navStyle} onClick={() => go("home")}>Home</button>
+          {session ? (
+            <>
+              <button style={navStyle} onClick={() => go("dashboard")}>Dashboard</button>
+              <button style={navStyle} onClick={() => go("deposit")}>Fund Wallet</button>
               {profile?.role === "admin" && (
-                <div className="admin-panel">
-                  <h3>Admin — Pending Deposits</h3>
-
-                  <button
-                    className="refresh-btn"
-                    onClick={loadAdminDeposits}
-                    disabled={adminLoading}
-                  >
-                    <RefreshCw size={16} />
-                    {adminLoading ? "Loading..." : "Refresh Requests"}
-                  </button>
-
-                  {adminDeposits.length === 0 ? (
-                    <p>No pending deposit requests.</p>
-                  ) : (
-                    <div className="deposit-list">
-                      {adminDeposits.map(deposit => (
-                        <div className="deposit-item" key={deposit.id}>
-                          <strong>₦{money(deposit.amount)}</strong>
-
-                          <p>
-                            Customer: {deposit.customer?.full_name || "Unknown"}
-                          </p>
-                          <p>
-                            Username: {deposit.customer?.username || "Unknown"}
-                          </p>
-                          <p>
-                            Phone: {deposit.customer?.phone || "Not available"}
-                          </p>
-                          <p>
-                            Reference: {deposit.payment_reference || "Not provided"}
-                          </p>
-                          <p>
-                            Date: {new Date(deposit.created_at).toLocaleString()}
-                          </p>
-
-                          <span className="status">Pending</span>
-
-                          <div className="admin-buttons">
-                            <button
-                              className="approve-btn"
-                              onClick={() => processDeposit(deposit.id, "approve")}
-                            >
-                              <CheckCircle size={15} /> Approve
-                            </button>
-
-                            <button
-                              className="reject-btn"
-                              onClick={() => processDeposit(deposit.id, "reject")}
-                            >
-                              <XCircle size={15} /> Reject
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <button style={navStyle} onClick={() => go("admin")}>Admin Panel</button>
               )}
+              <button style={navStyle} onClick={logout}>Logout</button>
+            </>
+          ) : (
+            <>
+              <button style={navStyle} onClick={() => go("login")}>Login</button>
+              <button style={navStyle} onClick={() => go("register")}>Create Account</button>
+            </>
+          )}
+        </nav>
+      )}
 
-              <div className="dashboard-actions">
-                <button className="account-action" onClick={handleLogout}>
-                  <LogOut size={17} /> Logout
-                </button>
+      <main style={{ maxWidth: "950px", margin: "auto", padding: "30px 5%" }}>
+        {message && (
+          <div
+            style={{
+              ...cardStyle,
+              borderColor: "#d6a832",
+              color: "#f0c75e",
+            }}
+          >
+            {message}
+          </div>
+        )}
+
+        {page === "home" && (
+          <>
+            <section style={{ padding: "55px 0", textAlign: "center" }}>
+              <div style={{ color: "#d6a832", fontWeight: "bold" }}>
+                YOUR TRUSTED VTU PLATFORM
               </div>
 
-              {message && <div className="account-message">{message}</div>}
-            </div>
-          ) : (
-            <div className="account-box">
-              <span className="section-label">SODIQ CUSTOMER ACCOUNT</span>
-              <h2>{mode === "register" ? "Create Your Account" : "Welcome Back"}</h2>
-              <p>
-                {mode === "register"
-                  ? "Register to access SODIQ TELECOM SERVICES."
-                  : "Log in to manage your digital services."}
+              <h1 style={{ fontSize: "clamp(32px, 7vw, 55px)" }}>
+                SODIQ <span style={{ color: "#d6a832" }}>TELECOM</span>
+              </h1>
+
+              <p style={{ color: "#bbb", lineHeight: 1.8 }}>
+                Airtime, data, bill payments and digital services — all in one
+                place.
               </p>
 
-              <form className="account-form" onSubmit={handleSubmit}>
-                {mode === "register" && (
-                  <>
-                    <input
-                      name="full_name"
-                      placeholder="Full name"
-                      value={form.full_name}
-                      onChange={updateForm}
-                      required
-                    />
-
-                    <input
-                      name="username"
-                      placeholder="Choose a username"
-                      value={form.username}
-                      onChange={updateForm}
-                      required
-                    />
-
-                    <select
-                      name="gender"
-                      value={form.gender}
-                      onChange={updateForm}
-                      required
-                    >
-                      <option value="">Select gender</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Prefer not to say">Prefer not to say</option>
-                    </select>
-
-                    <input
-                      name="phone"
-                      type="tel"
-                      placeholder="Phone number"
-                      value={form.phone}
-                      onChange={updateForm}
-                      required
-                    />
-                  </>
-                )}
-
-                <input
-                  name="email"
-                  type="email"
-                  placeholder="Email address"
-                  value={form.email}
-                  onChange={updateForm}
-                  required
-                />
-
-                <input
-                  name="password"
-                  type="password"
-                  placeholder="Password"
-                  value={form.password}
-                  onChange={updateForm}
-                  required
-                />
-
-                {mode === "register" && (
-                  <input
-                    name="confirmPassword"
-                    type="password"
-                    placeholder="Confirm password"
-                    value={form.confirmPassword}
-                    onChange={updateForm}
-                    required
-                  />
-                )}
-
-                <button type="submit" disabled={busy}>
-                  {busy
-                    ? "Please wait..."
-                    : mode === "register"
-                    ? "Create Account"
-                    : "Login"}
-                </button>
-              </form>
-
-              <button
-                className="account-switch"
-                onClick={() => {
-                  setMode(mode === "register" ? "login" : "register");
-                  setMessage("");
-                }}
-              >
-                {mode === "register"
-                  ? "Already have an account? Login"
-                  : "New customer? Create an account"}
+              <button style={buttonStyle} onClick={() => go("register")}>
+                Get Started
               </button>
 
-              {message && <div className="account-message">{message}</div>}
-            </div>
-          )}
-        </section>
+              <button
+                style={{
+                  ...buttonStyle,
+                  marginLeft: "10px",
+                  background: "#252525",
+                  color: "white",
+                }}
+                onClick={() => go("login")}
+              >
+                Login
+              </button>
+            </section>
 
-        <section className="support-banner" id="support">
-          <div>
-            <Headphones size={30} />
-            <h2>We're Here To Help.</h2>
-            <p>Need assistance? Contact our support team.</p>
+            <h2 style={{ color: "#d6a832" }}>Our Services</h2>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))",
+                gap: "13px",
+              }}
+            >
+              {[
+                [Smartphone, "Airtime"],
+                [Wifi, "Data"],
+                [Tv, "Cable TV"],
+                [Zap, "Electricity"],
+                [GraduationCap, "Exam Pins"],
+                [Gift, "Referral"],
+              ].map(([Icon, title]) => (
+                <div key={title} style={{ ...cardStyle, textAlign: "center" }}>
+                  <Icon color="#d6a832" size={30} />
+                  <p>{title}</p>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...cardStyle, marginTop: "25px" }}>
+              <ShieldCheck color="#d6a832" size={30} />
+              <h3>Secure and Reliable</h3>
+              <p style={{ color: "#bbb" }}>
+                Customer deposits are manually verified before wallet credit.
+              </p>
+            </div>
+          </>
+        )}
+
+        {page === "register" && (
+          <section style={{ maxWidth: "480px", margin: "auto" }}>
+            <h2 style={{ color: "#d6a832" }}>Create Your Account</h2>
+
+            <form onSubmit={register}>
+              <label>Full Name</label>
+              <input
+                style={inputStyle}
+                value={form.full_name}
+                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                required
+              />
+
+              <label>Username</label>
+              <input
+                style={inputStyle}
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
+                required
+              />
+
+              <label>Gender</label>
+              <select
+                style={inputStyle}
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                required
+              >
+                <option value="">Select gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Prefer not to say</option>
+              </select>
+
+              <label>Phone Number</label>
+              <input
+                style={inputStyle}
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                required
+              />
+
+              <label>Email Address</label>
+              <input
+                style={inputStyle}
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
+
+              <label>Password</label>
+              <input
+                style={inputStyle}
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+
+              <button style={buttonStyle} disabled={loading}>
+                {loading ? "Creating account..." : "Create Account"}
+              </button>
+            </form>
+
+            <p>
+              Already registered?{" "}
+              <button style={linkStyle} onClick={() => go("login")}>Login</button>
+            </p>
+          </section>
+        )}
+
+        {page === "login" && (
+          <section style={{ maxWidth: "450px", margin: "auto" }}>
+            <h2 style={{ color: "#d6a832" }}>Login</h2>
+
+            <form onSubmit={login}>
+              <label>Email Address</label>
+              <input
+                style={inputStyle}
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
+
+              <label>Password</label>
+              <input
+                style={inputStyle}
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
+
+              <button style={buttonStyle} disabled={loading}>
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            </form>
+
+            <p>
+              No account?{" "}
+              <button style={linkStyle} onClick={() => go("register")}>
+                Register
+              </button>
+            </p>
+          </section>
+        )}
+
+        {page === "dashboard" && session && (
+          <>
+            <h2 style={{ color: "#d6a832" }}>My Dashboard</h2>
+
+            <div style={cardStyle}>
+              <User color="#d6a832" />
+              <h3>Welcome, {profile?.full_name || session.user.email}</h3>
+              <p style={{ color: "#aaa" }}>{session.user.email}</p>
+            </div>
+
+            <div style={{ ...cardStyle, borderColor: "#d6a832" }}>
+              <Wallet color="#d6a832" size={30} />
+              <p>WALLET BALANCE</p>
+              <h1 style={{ color: "#d6a832" }}>{money(balance)}</h1>
+              <button style={buttonStyle} onClick={() => go("deposit")}>
+                Fund Wallet
+              </button>
+            </div>
+
+            {profile?.role === "admin" && (
+              <div style={cardStyle}>
+                <h3>Administrator</h3>
+                <button style={buttonStyle} onClick={() => go("admin")}>
+                  Open Admin Panel
+                </button>
+              </div>
+            )}
+
+            <h3>Deposit History</h3>
+
+            {deposits.length === 0 ? (
+              <p style={{ color: "#aaa" }}>No deposits yet.</p>
+            ) : (
+              deposits.map((deposit) => (
+                <div key={deposit.id} style={cardStyle}>
+                  <strong>{money(deposit.amount)}</strong>
+                  <p>Reference: {deposit.payment_reference || "N/A"}</p>
+                  <p>
+                    Status:{" "}
+                    <span style={{ color: "#d6a832" }}>{deposit.status}</span>
+                  </p>
+                  <small>{new Date(deposit.created_at).toLocaleString()}</small>
+                </div>
+              ))
+            )}
+
+            <button style={buttonStyle} onClick={() => loadAccount(session.user)}>
+              <RefreshCw size={15} /> Refresh Account
+            </button>
+          </>
+        )}
+
+        {page === "deposit" && session && (
+          <section style={{ maxWidth: "500px", margin: "auto" }}>
+            <h2 style={{ color: "#d6a832" }}>Fund Your Wallet</h2>
+
+            <div style={cardStyle}>
+              <p>Make your transfer to this OPay account:</p>
+              <h3 style={{ color: "#d6a832" }}>OPay</h3>
+              <h2>8114095631</h2>
+              <h3>Ogunlowo Sodiq Ayomiposi</h3>
+              <p style={{ color: "#aaa" }}>
+                After transferring, enter your amount and payment reference
+                below. Your wallet will be credited after verification.
+              </p>
+            </div>
+
+            <form onSubmit={submitDeposit}>
+              <label>Amount (₦)</label>
+              <input
+                style={inputStyle}
+                type="number"
+                min="1"
+                value={depositForm.amount}
+                onChange={(e) =>
+                  setDepositForm({ ...depositForm, amount: e.target.value })
+                }
+                required
+              />
+
+              <label>OPay Transfer Reference</label>
+              <input
+                style={inputStyle}
+                value={depositForm.reference}
+                onChange={(e) =>
+                  setDepositForm({ ...depositForm, reference: e.target.value })
+                }
+                required
+              />
+
+              <button style={buttonStyle} disabled={loading}>
+                {loading ? "Submitting..." : "Submit Deposit Request"}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {page === "admin" && session && profile?.role === "admin" && (
+          <>
+            <h2 style={{ color: "#d6a832" }}>Admin Panel</h2>
+
+            <button
+              style={buttonStyle}
+              onClick={loadPendingDeposits}
+              disabled={loading}
+            >
+              <RefreshCw size={15} /> Refresh Requests
+            </button>
+
+            <h3>Pending Deposits ({pendingDeposits.length})</h3>
+
+            {pendingDeposits.length === 0 ? (
+              <p style={{ color: "#aaa" }}>No pending deposits.</p>
+            ) : (
+              pendingDeposits.map((deposit) => (
+                <div key={deposit.id} style={cardStyle}>
+                  <h3 style={{ color: "#d6a832" }}>{money(deposit.amount)}</h3>
+                  <p>Customer: {deposit.customer?.full_name || "Unknown"}</p>
+                  <p>Username: {deposit.customer?.username || "N/A"}</p>
+                  <p>Phone: {deposit.customer?.phone || "N/A"}</p>
+                  <p>Reference: {deposit.payment_reference || "N/A"}</p>
+                  <p>
+                    Date: {new Date(deposit.created_at).toLocaleString()}
+                  </p>
+
+                  <button
+                    style={{ ...buttonStyle, background: "#238636", color: "white" }}
+                    onClick={() => processDeposit(deposit.id, "approve")}
+                    disabled={loading}
+                  >
+                    <CheckCircle size={15} /> Approve
+                  </button>
+
+                  <button
+                    style={{
+                      ...buttonStyle,
+                      background: "#b42318",
+                      color: "white",
+                      marginLeft: "8px",
+                    }}
+                    onClick={() => processDeposit(deposit.id, "reject")}
+                    disabled={loading}
+                  >
+                    <XCircle size={15} /> Reject
+                  </button>
+                </div>
+              ))
+            )}
+          </>
+        )}
+
+        {!session && ["dashboard", "deposit", "admin"].includes(page) && (
+          <div style={cardStyle}>
+            <p>Please log in to continue.</p>
+            <button style={buttonStyle} onClick={() => go("login")}>
+              Login
+            </button>
           </div>
-          <a
-            href="https://wa.me/2348114095631"
-            target="_blank"
-            rel="noreferrer"
-            className="gold-btn"
-          >
-            Contact Support <ArrowUpRight size={18} />
-          </a>
-        </section>
+        )}
       </main>
 
-      <footer>
-        <a className="brand footer-brand" href="#">
-          <span className="brand-icon">S</span>
-          <span>
-            <strong>SODIQ <b>TELECOM</b></strong>
-            <small>SERVICES 2027</small>
-          </span>
+      <footer
+        style={{
+          borderTop: "1px solid #302719",
+          padding: "30px 5%",
+          textAlign: "center",
+          color: "#aaa",
+        }}
+      >
+        <p>
+          <strong style={{ color: "#d6a832" }}>SODIQ TELECOM SERVICES</strong>
+        </p>
+        <p>Tech • Digital • Connectivity</p>
+        <a href={WHATSAPP} style={{ color: "#d6a832" }}>
+          <Headphones size={15} /> Contact Support
         </a>
-        <p>A New Generation of Digital Services.</p>
-        <span className="copyright">
-          © 2027 SODIQ TELECOM SERVICES. Built by Ogunlowo Sodiq.
-        </span>
+        <p>© 2026 Sodiq Telecom Services. All rights reserved.</p>
       </footer>
     </div>
   );
 }
 
-export default App;
+const navStyle = {
+  background: "transparent",
+  border: "none",
+  color: "white",
+  textAlign: "left",
+  padding: "8px",
+  cursor: "pointer",
+};
+
+const linkStyle = {
+  background: "transparent",
+  border: "none",
+  color: "#d6a832",
+  cursor: "pointer",
+};
