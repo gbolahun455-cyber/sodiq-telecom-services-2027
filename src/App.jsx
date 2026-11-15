@@ -1,19 +1,8 @@
 import React, { useEffect, useState } from "react";
 import {
-  Smartphone,
-  Wifi,
-  Tv,
-  Zap,
-  GraduationCap,
-  Gift,
-  ArrowUpRight,
-  ShieldCheck,
-  Menu,
-  Globe,
-  Headphones,
-  User,
-  LogOut,
-  Wallet
+  Smartphone, Wifi, Tv, Zap, GraduationCap, Gift,
+  ArrowUpRight, ShieldCheck, Menu, Globe, Headphones,
+  User, LogOut, Wallet, RefreshCw, CheckCircle, XCircle
 } from "lucide-react";
 import { supabase } from "./supabase";
 
@@ -26,6 +15,12 @@ const services = [
   { name: "Exam Pins", detail: "Education PINs and vouchers", icon: GraduationCap }
 ];
 
+const money = value =>
+  Number(value || 0).toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
 function App() {
   const [session, setSession] = useState(null);
   const [mode, setMode] = useState("login");
@@ -34,6 +29,12 @@ function App() {
   const [message, setMessage] = useState("");
   const [profile, setProfile] = useState(null);
   const [balance, setBalance] = useState(0);
+  const [deposits, setDeposits] = useState([]);
+  const [adminDeposits, setAdminDeposits] = useState([]);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const [form, setForm] = useState({
     full_name: "",
@@ -61,34 +62,65 @@ function App() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    async function loadAccount() {
-      if (!session?.user) {
-        setProfile(null);
-        setBalance(0);
-        return;
-      }
+  async function loadAccount() {
+    if (!session?.user) return;
 
-      const userId = session.user.id;
+    const userId = session.user.id;
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("full_name, username, gender, phone, role")
-        .eq("id", userId)
-        .maybeSingle();
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("full_name, username, gender, phone, role")
+      .eq("id", userId)
+      .maybeSingle();
 
-      const { data: walletData } = await supabase
-        .from("wallets")
-        .select("balance")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      setProfile(profileData);
-      setBalance(Number(walletData?.balance || 0));
+    if (profileError) {
+      setMessage(profileError.message);
+      return;
     }
 
-    loadAccount();
+    const { data: walletData, error: walletError } = await supabase
+      .from("wallets")
+      .select("balance")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (walletError) {
+      setMessage(walletError.message);
+      return;
+    }
+
+    const { data: depositData, error: depositError } = await supabase
+      .from("deposits")
+      .select("id, amount, status, payment_reference, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (depositError) {
+      setMessage(depositError.message);
+      return;
+    }
+
+    setProfile(profileData);
+    setBalance(Number(walletData?.balance || 0));
+    setDeposits(depositData || []);
+  }
+
+  useEffect(() => {
+    if (session?.user) {
+      loadAccount();
+    } else {
+      setProfile(null);
+      setBalance(0);
+      setDeposits([]);
+      setAdminDeposits([]);
+    }
   }, [session]);
+
+  useEffect(() => {
+    if (session && profile?.role === "admin") {
+      loadAdminDeposits();
+    }
+  }, [session, profile]);
 
   function updateForm(event) {
     setForm({
@@ -114,7 +146,12 @@ function App() {
         return;
       }
 
-      if (!form.full_name.trim() || !form.username.trim() || !form.phone.trim()) {
+      if (
+        !form.full_name.trim() ||
+        !form.username.trim() ||
+        !form.phone.trim() ||
+        !form.gender
+      ) {
         setMessage("Please complete all required fields.");
         return;
       }
@@ -160,14 +197,116 @@ function App() {
         setMessage("Login successful!");
       }
     } catch (error) {
-      setMessage(error.message || "Something went wrong. Please try again.");
+      setMessage(error.message || "Something went wrong.");
     } finally {
       setBusy(false);
     }
   }
 
+  async function submitDeposit(event) {
+    event.preventDefault();
+    setMessage("");
+
+    const amount = Number(depositAmount);
+
+    if (!Number.isFinite(amount) || amount < 100) {
+      setMessage("The minimum deposit request is ₦100.");
+      return;
+    }
+
+    if (!paymentReference.trim()) {
+      setMessage("Enter your OPay payment reference.");
+      return;
+    }
+
+    setDepositLoading(true);
+
+    try {
+      const { error } = await supabase.from("deposits").insert({
+        user_id: session.user.id,
+        amount,
+        status: "pending",
+        payment_reference: paymentReference.trim()
+      });
+
+      if (error) throw error;
+
+      setMessage("Deposit request submitted! Await admin verification.");
+      setDepositAmount("");
+      setPaymentReference("");
+      await loadAccount();
+    } catch (error) {
+      setMessage(error.message || "Could not submit deposit request.");
+    } finally {
+      setDepositLoading(false);
+    }
+  }
+
+  async function loadAdminDeposits() {
+    setAdminLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-deposits",
+        {
+          body: { action: "list" }
+        }
+      );
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setAdminDeposits(data.deposits || []);
+    } catch (error) {
+      setMessage("Admin request failed: " + error.message);
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function processDeposit(depositId, action) {
+    const confirmed = window.confirm(
+      `Are you sure you want to ${action} this deposit?`
+    );
+
+    if (!confirmed) return;
+
+    setMessage("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-deposits",
+        {
+          body: {
+            action,
+            depositId
+          }
+        }
+      );
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setMessage(
+        action === "approve"
+          ? "Deposit approved and wallet credited successfully."
+          : "Deposit rejected successfully."
+      );
+
+      await loadAdminDeposits();
+    } catch (error) {
+      setMessage("Could not process deposit: " + error.message);
+    }
+  }
+
   async function handleLogout() {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
     setMessage("You have logged out.");
     setMode("login");
   }
@@ -180,19 +319,20 @@ function App() {
           background: #0b0b0b;
           color: #fff;
         }
-        .account-box {
-          max-width: 520px;
+        .account-box, .dashboard-card {
+          max-width: 850px;
           margin: auto;
           padding: 32px;
           border: 1px solid rgba(212,175,55,.35);
           border-radius: 18px;
           background: #141414;
         }
-        .account-box h2 {
+        .account-box { max-width: 520px; }
+        .account-box h2, .dashboard-card h2 {
           font-size: 28px;
           margin-bottom: 10px;
         }
-        .account-box p {
+        .account-box p, .dashboard-card p {
           color: #aaa;
           line-height: 1.6;
         }
@@ -201,8 +341,8 @@ function App() {
           gap: 14px;
           margin-top: 24px;
         }
-        .account-form input,
-        .account-form select {
+        .account-form input, .account-form select,
+        .deposit-form input {
           width: 100%;
           padding: 15px;
           border: 1px solid #444;
@@ -212,8 +352,8 @@ function App() {
           font-size: 15px;
           box-sizing: border-box;
         }
-        .account-form button,
-        .account-action {
+        .account-form button, .account-action,
+        .deposit-form button {
           padding: 15px;
           border: none;
           border-radius: 9px;
@@ -222,6 +362,7 @@ function App() {
           font-weight: bold;
           cursor: pointer;
         }
+        button:disabled { opacity: .6; cursor: not-allowed; }
         .account-switch {
           margin-top: 20px;
           color: #d4af37;
@@ -237,14 +378,6 @@ function App() {
           background: #24200f;
           color: #f2d675;
           overflow-wrap: anywhere;
-        }
-        .dashboard-card {
-          max-width: 850px;
-          margin: auto;
-          padding: 30px;
-          border: 1px solid rgba(212,175,55,.35);
-          border-radius: 18px;
-          background: #141414;
         }
         .wallet-card {
           margin: 25px 0;
@@ -268,6 +401,81 @@ function App() {
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+        .deposit-panel, .admin-panel {
+          margin-top: 30px;
+          padding: 24px;
+          border: 1px solid #393939;
+          border-radius: 14px;
+          background: #101010;
+        }
+        .deposit-panel h3, .admin-panel h3 {
+          color: #f2d675;
+          margin-top: 0;
+        }
+        .bank-details {
+          padding: 18px;
+          margin: 18px 0;
+          background: #201b0c;
+          border: 1px solid #66521b;
+          border-radius: 10px;
+          line-height: 1.9;
+        }
+        .deposit-form {
+          display: grid;
+          gap: 12px;
+          margin-top: 18px;
+        }
+        .deposit-list {
+          display: grid;
+          gap: 12px;
+          margin-top: 18px;
+        }
+        .deposit-item {
+          padding: 16px;
+          border: 1px solid #333;
+          border-radius: 10px;
+          background: #191919;
+          overflow-wrap: anywhere;
+        }
+        .deposit-item strong { color: #f2d675; }
+        .status {
+          display: inline-block;
+          margin-top: 8px;
+          padding: 5px 10px;
+          border-radius: 20px;
+          font-size: 12px;
+          text-transform: uppercase;
+          background: #302a14;
+          color: #f2d675;
+        }
+        .status.approved { background: #12321e; color: #8be0a6; }
+        .status.rejected { background: #391818; color: #ff9b9b; }
+        .admin-buttons {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+        .approve-btn, .reject-btn {
+          border: none;
+          border-radius: 8px;
+          padding: 11px 15px;
+          cursor: pointer;
+          font-weight: bold;
+        }
+        .approve-btn { background: #1b6a37; color: white; }
+        .reject-btn { background: #812929; color: white; }
+        .refresh-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border: 1px solid #d4af37;
+          border-radius: 8px;
+          background: transparent;
+          color: #f2d675;
+          cursor: pointer;
         }
         @media(max-width:600px) {
           .account-section { padding: 45px 5%; }
@@ -333,16 +541,12 @@ function App() {
           <div className="hero-visual">
             <div className="orbit orbit-one"></div>
             <div className="orbit orbit-two"></div>
-            <div className="logo-glow">
-              <span>S</span>
-            </div>
+            <div className="logo-glow"><span>S</span></div>
             <div className="floating-card card-top">
-              <Wifi size={18} />
-              <span>Stay Connected</span>
+              <Wifi size={18} /><span>Stay Connected</span>
             </div>
             <div className="floating-card card-bottom">
-              <ShieldCheck size={18} />
-              <span>Digital Convenience</span>
+              <ShieldCheck size={18} /><span>Digital Convenience</span>
             </div>
           </div>
         </section>
@@ -378,6 +582,7 @@ function App() {
               );
             })}
           </div>
+
           <p className="catalogue-note">
             Service availability and supported products will be confirmed before transactions are enabled.
           </p>
@@ -403,7 +608,7 @@ function App() {
               <p>Tools and integrations for developers.</p>
               <ArrowUpRight />
             </a>
-            <a href="/admin" className="division-card">
+            <a href="#account" className="division-card">
               <ShieldCheck size={25} />
               <h3>SODIQ ADMIN</h3>
               <p>Central platform administration.</p>
@@ -419,23 +624,140 @@ function App() {
             </div>
           ) : session ? (
             <div className="dashboard-card">
-              <span className="section-label">CUSTOMER DASHBOARD</span>
+              <span className="section-label">
+                {profile?.role === "admin" ? "ADMIN DASHBOARD" : "CUSTOMER DASHBOARD"}
+              </span>
+
               <h2>Welcome, {profile?.full_name || session.user.email}</h2>
               <p>Your SODIQ TELECOM account is active.</p>
 
               <div className="wallet-card">
                 <Wallet size={25} />
                 <p>WALLET BALANCE</p>
-                <strong>
-                  ₦{balance.toLocaleString("en-NG", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </strong>
+                <strong>₦{money(balance)}</strong>
               </div>
 
-              <p><User size={16} /> Username: {profile?.username || "Loading..."}</p>
+              <p>Username: {profile?.username || "Loading..."}</p>
               <p>Email: {session.user.email}</p>
+
+              <div className="deposit-panel">
+                <h3>Fund Your Wallet</h3>
+                <p>Transfer to the OPay account below. Your wallet is credited only after admin verification.</p>
+
+                <div className="bank-details">
+                  <strong>Bank:</strong> OPay<br />
+                  <strong>Account Number:</strong> 8114095631<br />
+                  <strong>Account Name:</strong> Ogunlowo Sodiq Ayomiposi
+                </div>
+
+                <form className="deposit-form" onSubmit={submitDeposit}>
+                  <input
+                    type="number"
+                    min="100"
+                    step="1"
+                    placeholder="Enter deposit amount (₦)"
+                    value={depositAmount}
+                    onChange={e => setDepositAmount(e.target.value)}
+                    required
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="OPay transfer reference"
+                    value={paymentReference}
+                    onChange={e => setPaymentReference(e.target.value)}
+                    required
+                  />
+
+                  <button type="submit" disabled={depositLoading}>
+                    {depositLoading ? "Submitting..." : "Submit Deposit Request"}
+                  </button>
+                </form>
+              </div>
+
+              <div className="deposit-panel">
+                <h3>My Deposit History</h3>
+
+                {deposits.length === 0 ? (
+                  <p>You have not made any deposit requests yet.</p>
+                ) : (
+                  <div className="deposit-list">
+                    {deposits.map(deposit => (
+                      <div className="deposit-item" key={deposit.id}>
+                        <strong>₦{money(deposit.amount)}</strong>
+                        <p>Reference: {deposit.payment_reference || "Not provided"}</p>
+                        <p>
+                          Date: {new Date(deposit.created_at).toLocaleString()}
+                        </p>
+                        <span className={`status ${deposit.status}`}>
+                          {deposit.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {profile?.role === "admin" && (
+                <div className="admin-panel">
+                  <h3>Admin — Pending Deposits</h3>
+
+                  <button
+                    className="refresh-btn"
+                    onClick={loadAdminDeposits}
+                    disabled={adminLoading}
+                  >
+                    <RefreshCw size={16} />
+                    {adminLoading ? "Loading..." : "Refresh Requests"}
+                  </button>
+
+                  {adminDeposits.length === 0 ? (
+                    <p>No pending deposit requests.</p>
+                  ) : (
+                    <div className="deposit-list">
+                      {adminDeposits.map(deposit => (
+                        <div className="deposit-item" key={deposit.id}>
+                          <strong>₦{money(deposit.amount)}</strong>
+
+                          <p>
+                            Customer: {deposit.customer?.full_name || "Unknown"}
+                          </p>
+                          <p>
+                            Username: {deposit.customer?.username || "Unknown"}
+                          </p>
+                          <p>
+                            Phone: {deposit.customer?.phone || "Not available"}
+                          </p>
+                          <p>
+                            Reference: {deposit.payment_reference || "Not provided"}
+                          </p>
+                          <p>
+                            Date: {new Date(deposit.created_at).toLocaleString()}
+                          </p>
+
+                          <span className="status">Pending</span>
+
+                          <div className="admin-buttons">
+                            <button
+                              className="approve-btn"
+                              onClick={() => processDeposit(deposit.id, "approve")}
+                            >
+                              <CheckCircle size={15} /> Approve
+                            </button>
+
+                            <button
+                              className="reject-btn"
+                              onClick={() => processDeposit(deposit.id, "reject")}
+                            >
+                              <XCircle size={15} /> Reject
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="dashboard-actions">
                 <button className="account-action" onClick={handleLogout}>
