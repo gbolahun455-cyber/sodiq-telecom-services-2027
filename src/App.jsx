@@ -1,20 +1,8 @@
 import React, { useEffect, useState } from "react";
 import {
-  Smartphone,
-  Wifi,
-  Tv,
-  Zap,
-  GraduationCap,
-  Gift,
-  ShieldCheck,
-  Headphones,
-  Wallet,
-  LogOut,
-  RefreshCw,
-  CheckCircle,
-  XCircle,
-  Menu,
-  User,
+  Smartphone, Wifi, Tv, Zap, GraduationCap, Gift,
+  ShieldCheck, Headphones, Wallet, RefreshCw,
+  CheckCircle, XCircle, Menu, User
 } from "lucide-react";
 import { supabase } from "./supabase";
 
@@ -55,8 +43,10 @@ export default function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
-      if (newSession) loadAccount(newSession.user);
-      else {
+
+      if (newSession) {
+        loadAccount(newSession.user);
+      } else {
         setProfile(null);
         setBalance(0);
         setDeposits([]);
@@ -95,7 +85,7 @@ export default function App() {
     setDeposits(depositData || []);
 
     if (profileData?.role === "admin") {
-      loadPendingDeposits();
+      await loadPendingDeposits();
     }
   }
 
@@ -214,7 +204,7 @@ export default function App() {
 
   async function loadPendingDeposits() {
     const { data, error } = await supabase.functions.invoke(
-      "admin-deposits",
+      "admin-deposits-v2",
       {
         body: { action: "list" },
       }
@@ -246,12 +236,9 @@ export default function App() {
     setMessage("");
 
     const { data, error } = await supabase.functions.invoke(
-      "admin-deposits",
+      "admin-deposits-v2",
       {
-        body: {
-          action,
-          depositId,
-        },
+        body: { action, depositId },
       }
     );
 
@@ -262,6 +249,7 @@ export default function App() {
     } else {
       setMessage(`Deposit ${action}d successfully.`);
       await loadPendingDeposits();
+      await loadAccount(session.user);
     }
 
     setLoading(false);
@@ -308,55 +296,47 @@ export default function App() {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#090909",
-        color: "#fff",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <header
-        style={{
-          padding: "17px 5%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid #302719",
-          background: "#101010",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div
-          onClick={() => go("home")}
-          style={{ cursor: "pointer", fontWeight: "bold", fontSize: "19px" }}
-        >
+    <div style={{
+      minHeight: "100vh",
+      background: "#090909",
+      color: "#fff",
+      fontFamily: "Arial, sans-serif"
+    }}>
+      <header style={{
+        padding: "17px 5%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "1px solid #302719",
+        background: "#101010",
+        position: "sticky",
+        top: 0,
+        zIndex: 10
+      }}>
+        <div onClick={() => go("home")} style={{
+          cursor: "pointer",
+          fontWeight: "bold",
+          fontSize: "19px"
+        }}>
           <span style={{ color: "#d6a832" }}>SODIQ</span> TELECOM
         </div>
 
-        <button
-          onClick={() => setShowMenu(!showMenu)}
-          style={{
-            background: "transparent",
-            color: "#d6a832",
-            border: "none",
-          }}
-        >
+        <button onClick={() => setShowMenu(!showMenu)} style={{
+          background: "transparent",
+          color: "#d6a832",
+          border: "none"
+        }}>
           <Menu size={25} />
         </button>
       </header>
 
       {showMenu && (
-        <nav
-          style={{
-            padding: "15px 5%",
-            background: "#171717",
-            display: "grid",
-            gap: "12px",
-          }}
-        >
+        <nav style={{
+          padding: "15px 5%",
+          background: "#171717",
+          display: "grid",
+          gap: "12px"
+        }}>
           <button style={navStyle} onClick={() => go("home")}>Home</button>
           {session ? (
             <>
@@ -378,13 +358,11 @@ export default function App() {
 
       <main style={{ maxWidth: "950px", margin: "auto", padding: "30px 5%" }}>
         {message && (
-          <div
-            style={{
-              ...cardStyle,
-              borderColor: "#d6a832",
-              color: "#f0c75e",
-            }}
-          >
+          <div style={{
+            ...cardStyle,
+            borderColor: "#d6a832",
+            color: "#f0c75e"
+          }}>
             {message}
           </div>
         )}
@@ -395,49 +373,34 @@ export default function App() {
               <div style={{ color: "#d6a832", fontWeight: "bold" }}>
                 YOUR TRUSTED VTU PLATFORM
               </div>
-
               <h1 style={{ fontSize: "clamp(32px, 7vw, 55px)" }}>
                 SODIQ <span style={{ color: "#d6a832" }}>TELECOM</span>
               </h1>
-
               <p style={{ color: "#bbb", lineHeight: 1.8 }}>
-                Airtime, data, bill payments and digital services — all in one
-                place.
+                Airtime, data, bill payments and digital services — all in one place.
               </p>
-
-              <button style={buttonStyle} onClick={() => go("register")}>
-                Get Started
-              </button>
-
-              <button
-                style={{
-                  ...buttonStyle,
-                  marginLeft: "10px",
-                  background: "#252525",
-                  color: "white",
-                }}
-                onClick={() => go("login")}
-              >
-                Login
-              </button>
+              <button style={buttonStyle} onClick={() => go("register")}>Get Started</button>
+              <button style={{
+                ...buttonStyle,
+                marginLeft: "10px",
+                background: "#252525",
+                color: "white"
+              }} onClick={() => go("login")}>Login</button>
             </section>
 
             <h2 style={{ color: "#d6a832" }}>Our Services</h2>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))",
-                gap: "13px",
-              }}
-            >
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))",
+              gap: "13px"
+            }}>
               {[
                 [Smartphone, "Airtime"],
                 [Wifi, "Data"],
                 [Tv, "Cable TV"],
                 [Zap, "Electricity"],
                 [GraduationCap, "Exam Pins"],
-                [Gift, "Referral"],
+                [Gift, "Referral"]
               ].map(([Icon, title]) => (
                 <div key={title} style={{ ...cardStyle, textAlign: "center" }}>
                   <Icon color="#d6a832" size={30} />
@@ -459,31 +422,18 @@ export default function App() {
         {page === "register" && (
           <section style={{ maxWidth: "480px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Create Your Account</h2>
-
             <form onSubmit={register}>
               <label>Full Name</label>
-              <input
-                style={inputStyle}
-                value={form.full_name}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                required
-              />
+              <input style={inputStyle} value={form.full_name}
+                onChange={e => setForm({ ...form, full_name: e.target.value })} required />
 
               <label>Username</label>
-              <input
-                style={inputStyle}
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                required
-              />
+              <input style={inputStyle} value={form.username}
+                onChange={e => setForm({ ...form, username: e.target.value })} required />
 
               <label>Gender</label>
-              <select
-                style={inputStyle}
-                value={form.gender}
-                onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                required
-              >
+              <select style={inputStyle} value={form.gender}
+                onChange={e => setForm({ ...form, gender: e.target.value })} required>
                 <option value="">Select gender</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
@@ -491,125 +441,76 @@ export default function App() {
               </select>
 
               <label>Phone Number</label>
-              <input
-                style={inputStyle}
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                required
-              />
+              <input style={inputStyle} value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })} required />
 
               <label>Email Address</label>
-              <input
-                style={inputStyle}
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                required
-              />
+              <input style={inputStyle} type="email" value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })} required />
 
               <label>Password</label>
-              <input
-                style={inputStyle}
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
+              <input style={inputStyle} type="password" value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })} required />
 
               <button style={buttonStyle} disabled={loading}>
                 {loading ? "Creating account..." : "Create Account"}
               </button>
             </form>
-
-            <p>
-              Already registered?{" "}
-              <button style={linkStyle} onClick={() => go("login")}>Login</button>
-            </p>
+            <p>Already registered? <button style={linkStyle} onClick={() => go("login")}>Login</button></p>
           </section>
         )}
 
         {page === "login" && (
           <section style={{ maxWidth: "450px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Login</h2>
-
             <form onSubmit={login}>
               <label>Email Address</label>
-              <input
-                style={inputStyle}
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                required
-              />
-
+              <input style={inputStyle} type="email" value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })} required />
               <label>Password</label>
-              <input
-                style={inputStyle}
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-
+              <input style={inputStyle} type="password" value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })} required />
               <button style={buttonStyle} disabled={loading}>
                 {loading ? "Logging in..." : "Login"}
               </button>
             </form>
-
-            <p>
-              No account?{" "}
-              <button style={linkStyle} onClick={() => go("register")}>
-                Register
-              </button>
-            </p>
+            <p>No account? <button style={linkStyle} onClick={() => go("register")}>Register</button></p>
           </section>
         )}
 
         {page === "dashboard" && session && (
           <>
             <h2 style={{ color: "#d6a832" }}>My Dashboard</h2>
-
             <div style={cardStyle}>
               <User color="#d6a832" />
               <h3>Welcome, {profile?.full_name || session.user.email}</h3>
               <p style={{ color: "#aaa" }}>{session.user.email}</p>
             </div>
-
             <div style={{ ...cardStyle, borderColor: "#d6a832" }}>
               <Wallet color="#d6a832" size={30} />
               <p>WALLET BALANCE</p>
               <h1 style={{ color: "#d6a832" }}>{money(balance)}</h1>
-              <button style={buttonStyle} onClick={() => go("deposit")}>
-                Fund Wallet
-              </button>
+              <button style={buttonStyle} onClick={() => go("deposit")}>Fund Wallet</button>
             </div>
 
             {profile?.role === "admin" && (
               <div style={cardStyle}>
                 <h3>Administrator</h3>
-                <button style={buttonStyle} onClick={() => go("admin")}>
-                  Open Admin Panel
-                </button>
+                <button style={buttonStyle} onClick={() => go("admin")}>Open Admin Panel</button>
               </div>
             )}
 
             <h3>Deposit History</h3>
-
             {deposits.length === 0 ? (
               <p style={{ color: "#aaa" }}>No deposits yet.</p>
-            ) : (
-              deposits.map((deposit) => (
-                <div key={deposit.id} style={cardStyle}>
-                  <strong>{money(deposit.amount)}</strong>
-                  <p>Reference: {deposit.payment_reference || "N/A"}</p>
-                  <p>
-                    Status:{" "}
-                    <span style={{ color: "#d6a832" }}>{deposit.status}</span>
-                  </p>
-                  <small>{new Date(deposit.created_at).toLocaleString()}</small>
-                </div>
-              ))
-            )}
+            ) : deposits.map(deposit => (
+              <div key={deposit.id} style={cardStyle}>
+                <strong>{money(deposit.amount)}</strong>
+                <p>Reference: {deposit.payment_reference || "N/A"}</p>
+                <p>Status: <span style={{ color: "#d6a832" }}>{deposit.status}</span></p>
+                <small>{new Date(deposit.created_at).toLocaleString()}</small>
+              </div>
+            ))}
 
             <button style={buttonStyle} onClick={() => loadAccount(session.user)}>
               <RefreshCw size={15} /> Refresh Account
@@ -620,40 +521,26 @@ export default function App() {
         {page === "deposit" && session && (
           <section style={{ maxWidth: "500px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Fund Your Wallet</h2>
-
             <div style={cardStyle}>
               <p>Make your transfer to this OPay account:</p>
               <h3 style={{ color: "#d6a832" }}>OPay</h3>
               <h2>8114095631</h2>
               <h3>Ogunlowo Sodiq Ayomiposi</h3>
               <p style={{ color: "#aaa" }}>
-                After transferring, enter your amount and payment reference
-                below. Your wallet will be credited after verification.
+                After transferring, enter your amount and payment reference below.
+                Your wallet will be credited after verification.
               </p>
             </div>
 
             <form onSubmit={submitDeposit}>
               <label>Amount (₦)</label>
-              <input
-                style={inputStyle}
-                type="number"
-                min="1"
+              <input style={inputStyle} type="number" min="1"
                 value={depositForm.amount}
-                onChange={(e) =>
-                  setDepositForm({ ...depositForm, amount: e.target.value })
-                }
-                required
-              />
+                onChange={e => setDepositForm({ ...depositForm, amount: e.target.value })} required />
 
               <label>OPay Transfer Reference</label>
-              <input
-                style={inputStyle}
-                value={depositForm.reference}
-                onChange={(e) =>
-                  setDepositForm({ ...depositForm, reference: e.target.value })
-                }
-                required
-              />
+              <input style={inputStyle} value={depositForm.reference}
+                onChange={e => setDepositForm({ ...depositForm, reference: e.target.value })} required />
 
               <button style={buttonStyle} disabled={loading}>
                 {loading ? "Submitting..." : "Submit Deposit Request"}
@@ -665,78 +552,55 @@ export default function App() {
         {page === "admin" && session && profile?.role === "admin" && (
           <>
             <h2 style={{ color: "#d6a832" }}>Admin Panel</h2>
-
-            <button
-              style={buttonStyle}
-              onClick={loadPendingDeposits}
-              disabled={loading}
-            >
+            <button style={buttonStyle} onClick={loadPendingDeposits} disabled={loading}>
               <RefreshCw size={15} /> Refresh Requests
             </button>
-
             <h3>Pending Deposits ({pendingDeposits.length})</h3>
 
             {pendingDeposits.length === 0 ? (
               <p style={{ color: "#aaa" }}>No pending deposits.</p>
-            ) : (
-              pendingDeposits.map((deposit) => (
-                <div key={deposit.id} style={cardStyle}>
-                  <h3 style={{ color: "#d6a832" }}>{money(deposit.amount)}</h3>
-                  <p>Customer: {deposit.customer?.full_name || "Unknown"}</p>
-                  <p>Username: {deposit.customer?.username || "N/A"}</p>
-                  <p>Phone: {deposit.customer?.phone || "N/A"}</p>
-                  <p>Reference: {deposit.payment_reference || "N/A"}</p>
-                  <p>
-                    Date: {new Date(deposit.created_at).toLocaleString()}
-                  </p>
+            ) : pendingDeposits.map(deposit => (
+              <div key={deposit.id} style={cardStyle}>
+                <h3 style={{ color: "#d6a832" }}>{money(deposit.amount)}</h3>
+                <p>Customer: {deposit.customer?.full_name || "Unknown"}</p>
+                <p>Username: {deposit.customer?.username || "N/A"}</p>
+                <p>Phone: {deposit.customer?.phone || "N/A"}</p>
+                <p>Reference: {deposit.payment_reference || "N/A"}</p>
+                <p>Date: {new Date(deposit.created_at).toLocaleString()}</p>
 
-                  <button
-                    style={{ ...buttonStyle, background: "#238636", color: "white" }}
-                    onClick={() => processDeposit(deposit.id, "approve")}
-                    disabled={loading}
-                  >
-                    <CheckCircle size={15} /> Approve
-                  </button>
+                <button style={{ ...buttonStyle, background: "#238636", color: "white" }}
+                  onClick={() => processDeposit(deposit.id, "approve")} disabled={loading}>
+                  <CheckCircle size={15} /> Approve
+                </button>
 
-                  <button
-                    style={{
-                      ...buttonStyle,
-                      background: "#b42318",
-                      color: "white",
-                      marginLeft: "8px",
-                    }}
-                    onClick={() => processDeposit(deposit.id, "reject")}
-                    disabled={loading}
-                  >
-                    <XCircle size={15} /> Reject
-                  </button>
-                </div>
-              ))
-            )}
+                <button style={{
+                  ...buttonStyle,
+                  background: "#b42318",
+                  color: "white",
+                  marginLeft: "8px"
+                }} onClick={() => processDeposit(deposit.id, "reject")} disabled={loading}>
+                  <XCircle size={15} /> Reject
+                </button>
+              </div>
+            ))}
           </>
         )}
 
         {!session && ["dashboard", "deposit", "admin"].includes(page) && (
           <div style={cardStyle}>
             <p>Please log in to continue.</p>
-            <button style={buttonStyle} onClick={() => go("login")}>
-              Login
-            </button>
+            <button style={buttonStyle} onClick={() => go("login")}>Login</button>
           </div>
         )}
       </main>
 
-      <footer
-        style={{
-          borderTop: "1px solid #302719",
-          padding: "30px 5%",
-          textAlign: "center",
-          color: "#aaa",
-        }}
-      >
-        <p>
-          <strong style={{ color: "#d6a832" }}>SODIQ TELECOM SERVICES</strong>
-        </p>
+      <footer style={{
+        borderTop: "1px solid #302719",
+        padding: "30px 5%",
+        textAlign: "center",
+        color: "#aaa"
+      }}>
+        <p><strong style={{ color: "#d6a832" }}>SODIQ TELECOM SERVICES</strong></p>
         <p>Tech • Digital • Connectivity</p>
         <a href={WHATSAPP} style={{ color: "#d6a832" }}>
           <Headphones size={15} /> Contact Support
@@ -753,12 +617,12 @@ const navStyle = {
   color: "white",
   textAlign: "left",
   padding: "8px",
-  cursor: "pointer",
+  cursor: "pointer"
 };
 
 const linkStyle = {
   background: "transparent",
   border: "none",
   color: "#d6a832",
-  cursor: "pointer",
+  cursor: "pointer"
 };
