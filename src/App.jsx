@@ -16,6 +16,8 @@ export default function App() {
   const [pendingDeposits, setPendingDeposits] = useState([]);
   const [page, setPage] = useState("home");
   const [loading, setLoading] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogResult, setCatalogResult] = useState(null);
   const [message, setMessage] = useState("");
   const [showMenu, setShowMenu] = useState(false);
 
@@ -51,6 +53,7 @@ export default function App() {
         setBalance(0);
         setDeposits([]);
         setPendingDeposits([]);
+        setCatalogResult(null);
       }
     });
 
@@ -162,6 +165,7 @@ export default function App() {
     await supabase.auth.signOut();
     setPage("home");
     setMessage("");
+    setCatalogResult(null);
   }
 
   async function submitDeposit(e) {
@@ -255,6 +259,39 @@ export default function App() {
     setLoading(false);
   }
 
+  // AUTOSYNCNG CATALOGUE TEST
+  async function testAutoSyncCatalog() {
+    setCatalogLoading(true);
+    setCatalogResult(null);
+    setMessage("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "autosync-catalog",
+        {
+          body: {},
+        }
+      );
+
+      if (error) {
+        setMessage(error.message);
+      } else if (data?.error) {
+        setMessage(data.error);
+      } else {
+        setCatalogResult(data);
+        setMessage("AutoSyncNG catalogue test completed.");
+      }
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not connect to AutoSyncNG."
+      );
+    }
+
+    setCatalogLoading(false);
+  }
+
   const money = (value) =>
     "₦" + Number(value || 0).toLocaleString("en-NG", {
       minimumFractionDigits: 2,
@@ -302,6 +339,7 @@ export default function App() {
       color: "#fff",
       fontFamily: "Arial, sans-serif"
     }}>
+
       <header style={{
         padding: "17px 5%",
         display: "flex",
@@ -338,13 +376,16 @@ export default function App() {
           gap: "12px"
         }}>
           <button style={navStyle} onClick={() => go("home")}>Home</button>
+
           {session ? (
             <>
               <button style={navStyle} onClick={() => go("dashboard")}>Dashboard</button>
               <button style={navStyle} onClick={() => go("deposit")}>Fund Wallet</button>
+
               {profile?.role === "admin" && (
                 <button style={navStyle} onClick={() => go("admin")}>Admin Panel</button>
               )}
+
               <button style={navStyle} onClick={logout}>Logout</button>
             </>
           ) : (
@@ -357,6 +398,7 @@ export default function App() {
       )}
 
       <main style={{ maxWidth: "950px", margin: "auto", padding: "30px 5%" }}>
+
         {message && (
           <div style={{
             ...cardStyle,
@@ -373,22 +415,31 @@ export default function App() {
               <div style={{ color: "#d6a832", fontWeight: "bold" }}>
                 YOUR TRUSTED VTU PLATFORM
               </div>
+
               <h1 style={{ fontSize: "clamp(32px, 7vw, 55px)" }}>
                 SODIQ <span style={{ color: "#d6a832" }}>TELECOM</span>
               </h1>
+
               <p style={{ color: "#bbb", lineHeight: 1.8 }}>
                 Airtime, data, bill payments and digital services — all in one place.
               </p>
-              <button style={buttonStyle} onClick={() => go("register")}>Get Started</button>
+
+              <button style={buttonStyle} onClick={() => go("register")}>
+                Get Started
+              </button>
+
               <button style={{
                 ...buttonStyle,
                 marginLeft: "10px",
                 background: "#252525",
                 color: "white"
-              }} onClick={() => go("login")}>Login</button>
+              }} onClick={() => go("login")}>
+                Login
+              </button>
             </section>
 
             <h2 style={{ color: "#d6a832" }}>Our Services</h2>
+
             <div style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))",
@@ -422,6 +473,7 @@ export default function App() {
         {page === "register" && (
           <section style={{ maxWidth: "480px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Create Your Account</h2>
+
             <form onSubmit={register}>
               <label>Full Name</label>
               <input style={inputStyle} value={form.full_name}
@@ -456,51 +508,69 @@ export default function App() {
                 {loading ? "Creating account..." : "Create Account"}
               </button>
             </form>
-            <p>Already registered? <button style={linkStyle} onClick={() => go("login")}>Login</button></p>
+
+            <p>
+              Already registered?{" "}
+              <button style={linkStyle} onClick={() => go("login")}>Login</button>
+            </p>
           </section>
         )}
 
         {page === "login" && (
           <section style={{ maxWidth: "450px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Login</h2>
+
             <form onSubmit={login}>
               <label>Email Address</label>
               <input style={inputStyle} type="email" value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })} required />
+
               <label>Password</label>
               <input style={inputStyle} type="password" value={form.password}
                 onChange={e => setForm({ ...form, password: e.target.value })} required />
+
               <button style={buttonStyle} disabled={loading}>
                 {loading ? "Logging in..." : "Login"}
               </button>
             </form>
-            <p>No account? <button style={linkStyle} onClick={() => go("register")}>Register</button></p>
+
+            <p>
+              No account?{" "}
+              <button style={linkStyle} onClick={() => go("register")}>Register</button>
+            </p>
           </section>
         )}
 
         {page === "dashboard" && session && (
           <>
             <h2 style={{ color: "#d6a832" }}>My Dashboard</h2>
+
             <div style={cardStyle}>
               <User color="#d6a832" />
               <h3>Welcome, {profile?.full_name || session.user.email}</h3>
               <p style={{ color: "#aaa" }}>{session.user.email}</p>
             </div>
+
             <div style={{ ...cardStyle, borderColor: "#d6a832" }}>
               <Wallet color="#d6a832" size={30} />
               <p>WALLET BALANCE</p>
               <h1 style={{ color: "#d6a832" }}>{money(balance)}</h1>
-              <button style={buttonStyle} onClick={() => go("deposit")}>Fund Wallet</button>
+              <button style={buttonStyle} onClick={() => go("deposit")}>
+                Fund Wallet
+              </button>
             </div>
 
             {profile?.role === "admin" && (
               <div style={cardStyle}>
                 <h3>Administrator</h3>
-                <button style={buttonStyle} onClick={() => go("admin")}>Open Admin Panel</button>
+                <button style={buttonStyle} onClick={() => go("admin")}>
+                  Open Admin Panel
+                </button>
               </div>
             )}
 
             <h3>Deposit History</h3>
+
             {deposits.length === 0 ? (
               <p style={{ color: "#aaa" }}>No deposits yet.</p>
             ) : deposits.map(deposit => (
@@ -521,11 +591,13 @@ export default function App() {
         {page === "deposit" && session && (
           <section style={{ maxWidth: "500px", margin: "auto" }}>
             <h2 style={{ color: "#d6a832" }}>Fund Your Wallet</h2>
+
             <div style={cardStyle}>
               <p>Make your transfer to this OPay account:</p>
               <h3 style={{ color: "#d6a832" }}>OPay</h3>
               <h2>8114095631</h2>
               <h3>Ogunlowo Sodiq Ayomiposi</h3>
+
               <p style={{ color: "#aaa" }}>
                 After transferring, enter your amount and payment reference below.
                 Your wallet will be credited after verification.
@@ -552,9 +624,13 @@ export default function App() {
         {page === "admin" && session && profile?.role === "admin" && (
           <>
             <h2 style={{ color: "#d6a832" }}>Admin Panel</h2>
-            <button style={buttonStyle} onClick={loadPendingDeposits} disabled={loading}>
+
+            <button style={buttonStyle}
+              onClick={loadPendingDeposits}
+              disabled={loading}>
               <RefreshCw size={15} /> Refresh Requests
             </button>
+
             <h3>Pending Deposits ({pendingDeposits.length})</h3>
 
             {pendingDeposits.length === 0 ? (
@@ -568,8 +644,13 @@ export default function App() {
                 <p>Reference: {deposit.payment_reference || "N/A"}</p>
                 <p>Date: {new Date(deposit.created_at).toLocaleString()}</p>
 
-                <button style={{ ...buttonStyle, background: "#238636", color: "white" }}
-                  onClick={() => processDeposit(deposit.id, "approve")} disabled={loading}>
+                <button style={{
+                  ...buttonStyle,
+                  background: "#238636",
+                  color: "white"
+                }}
+                  onClick={() => processDeposit(deposit.id, "approve")}
+                  disabled={loading}>
                   <CheckCircle size={15} /> Approve
                 </button>
 
@@ -578,20 +659,83 @@ export default function App() {
                   background: "#b42318",
                   color: "white",
                   marginLeft: "8px"
-                }} onClick={() => processDeposit(deposit.id, "reject")} disabled={loading}>
+                }}
+                  onClick={() => processDeposit(deposit.id, "reject")}
+                  disabled={loading}>
                   <XCircle size={15} /> Reject
                 </button>
               </div>
             ))}
+
+            {/* AUTOSYNCNG CONNECTION */}
+            <div style={{
+              ...cardStyle,
+              borderColor: "#d6a832",
+              marginTop: "30px"
+            }}>
+              <h2 style={{ color: "#d6a832" }}>
+                AutoSyncNG Provider
+              </h2>
+
+              <p style={{ color: "#bbb" }}>
+                Test the connection and retrieve the provider's catalogue.
+              </p>
+
+              <button
+                style={buttonStyle}
+                onClick={testAutoSyncCatalog}
+                disabled={catalogLoading}
+              >
+                <RefreshCw size={15} />
+                {" "}
+                {catalogLoading
+                  ? "Testing Connection..."
+                  : "Test AutoSyncNG Connection"}
+              </button>
+
+              {catalogResult && (
+                <div style={{ marginTop: "20px" }}>
+                  <h3 style={{ color: "#d6a832" }}>
+                    Provider Response
+                  </h3>
+
+                  <p>
+                    Provider: {catalogResult.provider || "AutoSyncNG"}
+                  </p>
+
+                  <p>
+                    API Version: {catalogResult.api_version || "Unknown"}
+                  </p>
+
+                  <pre style={{
+                    background: "#080808",
+                    color: "#b7e4b7",
+                    padding: "15px",
+                    borderRadius: "9px",
+                    overflowX: "auto",
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                    fontSize: "12px",
+                    maxHeight: "500px",
+                    overflowY: "auto"
+                  }}>
+                    {JSON.stringify(catalogResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
           </>
         )}
 
         {!session && ["dashboard", "deposit", "admin"].includes(page) && (
           <div style={cardStyle}>
             <p>Please log in to continue.</p>
-            <button style={buttonStyle} onClick={() => go("login")}>Login</button>
+            <button style={buttonStyle} onClick={() => go("login")}>
+              Login
+            </button>
           </div>
         )}
+
       </main>
 
       <footer style={{
@@ -600,11 +744,18 @@ export default function App() {
         textAlign: "center",
         color: "#aaa"
       }}>
-        <p><strong style={{ color: "#d6a832" }}>SODIQ TELECOM SERVICES</strong></p>
+        <p>
+          <strong style={{ color: "#d6a832" }}>
+            SODIQ TELECOM SERVICES
+          </strong>
+        </p>
+
         <p>Tech • Digital • Connectivity</p>
+
         <a href={WHATSAPP} style={{ color: "#d6a832" }}>
           <Headphones size={15} /> Contact Support
         </a>
+
         <p>© 2026 Sodiq Telecom Services. All rights reserved.</p>
       </footer>
     </div>
