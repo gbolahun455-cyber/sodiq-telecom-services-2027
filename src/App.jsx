@@ -1141,4 +1141,149 @@ export default function App() {  const [session, setSession] = useState(null);
                       {money(deposit.amount)}
                     </h3>
 
-                    <p>Customer: {deposit.customer?.ful
+                    <p>Customer: {deposit.customer?.full_name || "Unknown"}</p>
+                    <p>Username: {deposit.customer?.username || "N/A"}</p>
+                    <p>Phone: {deposit.customer?.phone || "N/A"}</p>
+                    <p>Reference: {deposit.payment_reference || "N/A"}</p>
+
+                    <p className="st-muted">
+                      {new Date(deposit.created_at).toLocaleString()}
+                    </p>
+
+                    <div style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 10
+                    }}>
+                      <button
+                        className={button}
+                        onClick={() => processDeposit(deposit.id, "approve")}
+                        disabled={loading}
+                      >
+                        <CheckCircle size={16} /> Approve
+                      </button>
+
+                      <button
+                        className="st-btn"
+                        style={{
+                          background: "#b42318",
+                          borderColor: "#b42318"
+                        }}
+                        onClick={() => processDeposit(deposit.id, "reject")}
+                        disabled={loading}
+                      >
+                        <XCircle size={16} /> Reject
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="st-card" style={{ marginTop: 22 }}>
+              <div className="st-eyebrow">
+                <Activity size={14} /> API CONNECTION
+              </div>
+
+              <h2>AutoSyncNG Provider</h2>
+              <p className="st-muted">
+                Check the connection and retrieve the provider catalogue.
+              </p>
+
+              <button
+                className={button}
+                onClick={testAutoSyncCatalog}
+                disabled={catalogLoading}
+              >
+                <RefreshCw
+                  size={16}
+                  className={catalogLoading ? "st-spinner" : ""}
+                />
+                {catalogLoading
+                  ? "Testing Connection..."
+                  : "Test AutoSyncNG Connection"}
+              </button>
+
+              {catalogResult && (
+                <div style={{ marginTop: 20 }}>
+                  <h3>Provider Response</h3>
+                  <p>Provider: {catalogResult.provider || "AutoSyncNG"}</p>
+                  <p>API Version: {catalogResult.api_version || "Unknown"}</p>
+
+                  <pre className="st-provider-output">
+                    {JSON.stringify(catalogResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {!session && ["dashboard", "deposit", "admin"].includes(page) && (
+          <div className="st-form-wrap">
+            <h2>Login required</h2>
+            <p>Please log in to access this section.</p>
+            <button className={button} onClick={() => go("login")}>
+              Login
+            </button>
+          </div>
+        )}
+
+        {session && page === "admin" && profile?.role !== "admin" && (
+          <div className="st-form-wrap">
+            <h2>Access restricted</h2>
+            <p>This section is only available to administrators.</p>
+            <button className={button} onClick={() => go("dashboard")}>
+              Return to Dashboard
+            </button>
+          </div>
+        )}
+      </main>
+
+      {session && (
+        <nav className="st-bottom-nav">
+          <button
+            className={page === "home" ? "active" : ""}
+            onClick={() => go("home")}
+          >
+            <Home size={20} /> Home
+          </button>
+
+          <button
+            className={page === "dashboard" ? "active" : ""}
+            onClick={() => go("dashboard")}
+          >
+            <LayoutDashboard size={20} /> Dashboard
+          </button>
+
+          <button
+            className={page === "deposit" ? "active" : ""}
+            onClick={() => go("deposit")}
+          >
+            <Wallet size={20} /> Wallet
+          </button>
+
+          <button onClick={() => {
+            window.location.href = WHATSAPP;
+          }}>
+            <Headphones size={20} /> Support
+          </button>
+        </nav>
+      )}
+
+      <footer className="st-footer">
+        <strong>SODIQ TELECOM SERVICES</strong>
+        <p>Reliable digital services. Simple connectivity.</p>
+
+        <a href={WHATSAPP}>
+          <Headphones size={16} style={{ verticalAlign: "middle" }} />
+          Contact Support
+        </a>
+
+        <p style={{ fontSize: 12, marginTop: 20 }}>
+          © 2026 Sodiq Telecom Services. All rights reserved.
+        </p>
+      </footer>
+    </div>
+  );
+}
