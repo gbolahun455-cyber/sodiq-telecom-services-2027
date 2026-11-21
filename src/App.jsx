@@ -491,8 +491,8 @@ export default function App() {  const [session, setSession] = useState(null);
 
     try {
       const { data, error } = await supabase.functions.invoke(
-        "autosync-catalog",
-        { body: {} }
+  "autosync-catalog-v2",
+  { body: {} }
       );
 
       if (error) {
