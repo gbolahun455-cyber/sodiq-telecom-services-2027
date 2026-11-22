@@ -10,11 +10,16 @@ import { supabase } from "./supabase";
 const WHATSAPP = "https://wa.me/2348114095631";
 
 const services = [
-  { icon: Smartphone, title: "Buy Airtime", desc: "Recharge all networks", color: "#16a34a" },
-  { icon: Wifi, title: "Buy Data", desc: "Affordable data plans", color: "#0d9488" },
-  { icon: Tv, title: "Cable TV", desc: "Renew your subscriptions", color: "#7c3aed" },
-  { icon: Zap, title: "Electricity", desc: "Pay electricity bills", color: "#d97706" },
-  { icon: Gift, title: "Referral", desc: "Invite and earn", color: "#db2777" }
+  { key: "airtime", icon: Smartphone, title: "Buy Airtime", desc: "Recharge MTN, Airtel and Glo", color: "#16a34a", status: "Existing integration" },
+  { key: "data", icon: Wifi, title: "Buy Data", desc: "Affordable data plans", color: "#0d9488", status: "Supplier setup required" },
+  { key: "cable", icon: Tv, title: "Cable TV", desc: "DStv, GOtv and StarTimes", color: "#7c3aed", status: "Supplier setup required" },
+  { key: "electricity", icon: Zap, title: "Electricity", desc: "Pay supported electricity bills", color: "#d97706", status: "Supplier setup required" },
+  { key: "exam", icon: Gift, title: "Exam Pins", desc: "WAEC, NECO and other pins", color: "#2563eb", status: "Supplier setup required" },
+  { key: "recharge", icon: CreditCard, title: "Recharge Cards", desc: "Generate recharge PINs", color: "#9333ea", status: "Supplier setup required" },
+  { key: "sms", icon: Headphones, title: "Bulk SMS", desc: "Send messages to customers", color: "#0891b2", status: "Supplier setup required" },
+  { key: "referral", icon: Gift, title: "Referral", desc: "Invite friends and earn rewards", color: "#db2777", status: "Backend setup required" },
+  { key: "gifting", icon: Gift, title: "Gifting", desc: "Send airtime or wallet gifts", color: "#ea580c", status: "Backend setup required" },
+  { key: "giveaway", icon: Sparkles, title: "Giveaway", desc: "View special rewards and promotions", color: "#7c3aed", status: "Admin setup required" }
 ];
 
 const styles = `
@@ -238,16 +243,15 @@ body { margin: 0; background: #f5f8f6; }
   .st-wallet h2 { font-size: 28px; } .st-section-head { align-items: start; flex-direction: column; }
   .st-feature { align-items: flex-start; padding: 18px; }
 }
-`;const textLink = {
-  border: 0,
-  background: "transparent",
-  color: "#15803d",
-  fontWeight: 800,
-  cursor: "pointer",
-  padding: 0
-};
+@media(prefers-reduced-motion: reduce) {
+  *,*:before,*:after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+`;
 
-export default function App() {
+const textLink = {
+  border: 0, background: "transparent", color: "#15803d",
+  fontWeight: 750, cursor: "pointer"
+};export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [balance, setBalance] = useState(0);
@@ -262,959 +266,449 @@ export default function App() {
   const [showBalance, setShowBalance] = useState(true);
 
   const [form, setForm] = useState({
-    full_name: "",
-    username: "",
-    gender: "",
-    phone: "",
-    email: "",
-    password: "",
-    confirm_password: "",
-    transaction_pin: ""
+    full_name: "", username: "", gender: "", phone: "", email: "", password: ""
   });
-
-  const [depositForm, setDepositForm] = useState({
-    amount: "",
-    reference: ""
-  });
-
-  const [airtimeForm, setAirtimeForm] = useState({
-    phone: "",
-    amount: "",
-    product_id: ""
-  });
-
-  const [airtimeBusy, setAirtimeBusy] = useState(false);
-  const [airtimeResult, setAirtimeResult] = useState(null);
-
-  const go = (target) => {
-    setPage(target);
-    setMessage("");
-    setShowMenu(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const notify = (text) => {
-    setMessage(text);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const loadAccount = async (user) => {
-    if (!user) return;
-
-    try {
-      const [profileRes, walletRes, depositsRes] = await Promise.all([
-        supabase.from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle(),
-
-        supabase.from("wallets")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-
-        supabase.from("deposits")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(20)
-      ]);
-
-      if (profileRes.error) throw profileRes.error;
-      if (walletRes.error) throw walletRes.error;
-      if (depositsRes.error) throw depositsRes.error;
-
-      setProfile(profileRes.data || null);
-      setBalance(Number(walletRes.data?.balance || 0));
-      setDeposits(depositsRes.data || []);
-    } catch (error) {
-      console.error("Account loading error:", error);
-      notify(error.message || "Unable to load your account.");
-    }
-  };
+  const [depositForm, setDepositForm] = useState({ amount: "", reference: "" });
 
   useEffect(() => {
-    let active = true;
-
-    const initialize = async () => {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (error) console.error(error);
-
-      if (active && data?.session) {
-        setSession(data.session);
-        await loadAccount(data.session.user);
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      if (data.session) loadAccount(data.session.user);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+      setSession(newSession);
+      if (newSession) loadAccount(newSession.user);
+      else {
+        setProfile(null); setBalance(0); setDeposits([]); setPendingDeposits([]); setCatalogResult(null);
       }
-    };
-
-    initialize();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
-        if (!active) return;
-
-        setSession(newSession);
-
-        if (newSession?.user) {
-          await loadAccount(newSession.user);
-        } else {
-          setProfile(null);
-          setBalance(0);
-          setDeposits([]);
-          setPendingDeposits([]);
-          setPage("home");
-        }
-      }
-    );
-
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
+    });
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
-  useEffect(() => {
-    if (session && profile?.role === "admin") {
-      loadPendingDeposits();
+  async function loadAccount(user) {
+    if (!user) return;
+    const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+    setProfile(profileData);
+    const { data: walletData } = await supabase.from("wallets").select("balance").eq("user_id", user.id).maybeSingle();
+    setBalance(Number(walletData?.balance || 0));
+    const { data: depositData } = await supabase.from("deposits").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    setDeposits(depositData || []);
+    if (profileData?.role === "admin") await loadPendingDeposits();
+  }
+
+  async function register(e) {
+    e.preventDefault(); setLoading(true); setMessage("");
+    if (!form.full_name.trim() || !form.username.trim() || !form.gender || !form.phone.trim() || !form.email.trim() || !form.password) {
+      setMessage("Please complete all fields."); setLoading(false); return;
     }
-  }, [session, profile]);
-
-  const loadPendingDeposits = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("deposits")
-        .select("*")
-        .eq("status", "pending")
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      setPendingDeposits(data || []);
-    } catch (error) {
-      console.error("Pending deposits error:", error);
-    }
-  };
-
-  const register = async (event) => {
-    event.preventDefault();
-
-    if (form.password !== form.confirm_password) {
-      return notify("Your passwords do not match.");
-    }
-
-    if (!/^\d{11}$/.test(form.phone)) {
-      return notify("Enter a valid 11-digit Nigerian phone number.");
-    }
-
-    if (!/^\d{4}$/.test(form.transaction_pin)) {
-      return notify("Your transaction PIN must contain exactly 4 digits.");
-    }
-
     if (form.password.length < 6) {
-      return notify("Your password must contain at least 6 characters.");
+      setMessage("Password must contain at least 6 characters."); setLoading(false); return;
     }
+    const { error } = await supabase.auth.signUp({
+      email: form.email.trim(), password: form.password,
+      options: { data: {
+        full_name: form.full_name.trim(), username: form.username.trim(),
+        gender: form.gender, phone: form.phone.trim()
+      } }
+    });
+    if (error) setMessage(error.message);
+    else { setMessage("Registration submitted! Check your email for a confirmation link."); setPage("login"); }
+    setLoading(false);
+  }
 
-    setLoading(true);
-    setMessage("");
+  async function login(e) {
+    e.preventDefault(); setLoading(true); setMessage("");
+    const { data, error } = await supabase.auth.signInWithPassword({ email: form.email.trim(), password: form.password });
+    if (error) setMessage(error.message);
+    else { await loadAccount(data.user); setPage("dashboard"); }
+    setLoading(false);
+  }
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: form.email.trim(),
-        password: form.password,
-        options: {
-          data: {
-            full_name: form.full_name.trim(),
-            username: form.username.trim(),
-            gender: form.gender,
-            phone: form.phone,
-            transaction_pin: form.transaction_pin
-          }
-        }
-      });
+  async function logout() {
+    await supabase.auth.signOut(); setPage("home"); setMessage(""); setCatalogResult(null);
+  }
 
-      if (error) throw error;
-
-      if (data.session) {
-        setSession(data.session);
-        await loadAccount(data.session.user);
-        go("dashboard");
-        notify("Your account has been created successfully.");
-      } else {
-        go("login");
-        notify("Registration successful. Check your email to confirm your account, then log in.");
-      }
-    } catch (error) {
-      notify(error.message || "Registration failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const login = async (event) => {
-    event.preventDefault();
-    setLoading(true);
-    setMessage("");
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: form.email.trim(),
-        password: form.password
-      });
-
-      if (error) throw error;
-
-      setSession(data.session);
-      await loadAccount(data.user);
-      go("dashboard");
-      notify("Login successful.");
-    } catch (error) {
-      notify(error.message || "Unable to log in.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    setLoading(true);
-
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-
-      setSession(null);
-      setProfile(null);
-      setBalance(0);
-      setDeposits([]);
-      go("home");
-    } catch (error) {
-      notify(error.message || "Logout failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const requestDeposit = async (event) => {
-    event.preventDefault();
-
+  async function submitDeposit(e) {
+    e.preventDefault(); setLoading(true); setMessage("");
     const amount = Number(depositForm.amount);
-
-    if (!Number.isFinite(amount) || amount < 100) {
-      return notify("Minimum deposit is ₦100.");
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMessage("Enter a valid deposit amount."); setLoading(false); return;
     }
-
     if (!depositForm.reference.trim()) {
-      return notify("Enter your payment reference.");
+      setMessage("Enter your OPay transfer reference."); setLoading(false); return;
     }
-
-    setLoading(true);
-
-    try {
-      const { error } = await supabase.from("deposits").insert({
-        user_id: session.user.id,
-        amount,
-        payment_reference: depositForm.reference.trim(),
-        status: "pending"
-      });
-
-      if (error) throw error;
-
+    const { error } = await supabase.from("deposits").insert({
+      user_id: session.user.id, amount, payment_reference: depositForm.reference.trim(), status: "pending"
+    });
+    if (error) setMessage(error.message);
+    else {
+      setMessage("Deposit request submitted. Awaiting admin verification.");
       setDepositForm({ amount: "", reference: "" });
-      await loadAccount(session.user);
-
-      notify("Deposit request submitted. Your wallet will be credited after admin approval.");
-    } catch (error) {
-      notify(error.message || "Could not submit deposit request.");
-    } finally {
-      setLoading(false);
+      await loadAccount(session.user); setPage("dashboard");
     }
-  };
+    setLoading(false);
+  }
 
-  const testCatalog = async () => {
-    setCatalogLoading(true);
-    setCatalogResult(null);
+  async function loadPendingDeposits() {
+    const { data, error } = await supabase.functions.invoke("admin-deposits-v2", { body: { action: "list" } });
+    if (error) { setMessage(error.message); return; }
+    if (data?.error) { setMessage(data.error); return; }
+    setPendingDeposits(data?.deposits || []);
+  }
 
-    try {
-      const { data, error } = await supabase.functions.invoke("autosync-catalog");
-
-      if (error) throw error;
-
-      setCatalogResult(data);
-      notify("Supplier catalogue request completed.");
-    } catch (error) {
-      setCatalogResult({ error: error.message });
-      notify("Could not connect to the supplier catalogue.");
-    } finally {
-      setCatalogLoading(false);
-    }
-  };
-
-  const purchaseAirtime = async (event) => {
-    event.preventDefault();
-
-    const phone = airtimeForm.phone.trim();
-    const amount = Number(airtimeForm.amount);
-    const productId = airtimeForm.product_id.trim();
-
-    if (!/^0\d{10}$/.test(phone)) {
-      return notify("Enter a valid 11-digit Nigerian phone number starting with 0.");
-    }
-
-    if (!Number.isInteger(amount) || amount < 1 || amount > 100000) {
-      return notify("Enter a valid airtime amount.");
-    }
-
-    if (!productId) {
-      return notify("Enter the supplier airtime product ID.");
-    }
-
-    if (amount > balance) {
-      return notify("Insufficient wallet balance. Please fund your wallet.");
-    }
-
-    const confirmed = window.confirm(
-      `Confirm airtime purchase of ₦${amount.toLocaleString("en-NG")} for ${phone}?`
-    );
-
+  async function processDeposit(depositId, action) {
+    const confirmed = window.confirm(action === "approve"
+      ? "Have you verified that this payment was received in your OPay account?"
+      : "Reject this deposit request?");
     if (!confirmed) return;
+    setLoading(true); setMessage("");
+    const { data, error } = await supabase.functions.invoke("admin-deposits-v2", { body: { action, depositId } });
+    if (error) setMessage(error.message);
+    else if (data?.error) setMessage(data.error);
+    else { setMessage(`Deposit ${action}d successfully.`); await loadPendingDeposits(); await loadAccount(session.user); }
+    setLoading(false);
+  }
 
-    setAirtimeBusy(true);
-    setAirtimeResult(null);
-
+  async function testAutoSyncCatalog() {
+    setCatalogLoading(true); setCatalogResult(null); setMessage("");
     try {
-      const requestRef = crypto.randomUUID();
-
-      const { data, error } = await supabase.functions.invoke(
-        "autosync-airtime-purchase",
-        {
-          body: {
-            phone,
-            amount,
-            product_id: productId,
-            request_ref: requestRef
-          }
-        }
-      );
-
-      if (error) throw error;
-
-      setAirtimeResult(data);
-
-      if (data?.status === "successful") {
-        notify("Airtime purchase successful.");
-        setAirtimeForm({ phone: "", amount: "", product_id: "" });
-        await loadAccount(session.user);
-      } else if (data?.status === "pending" || data?.status === "processing") {
-        notify("Your transaction is still processing. Check your transaction status before trying again.");
-        await loadAccount(session.user);
-      } else {
-        notify(data?.message || "Airtime purchase was not successful.");
-        await loadAccount(session.user);
-      }
+      const { data, error } = await supabase.functions.invoke("autosync-catalog", { body: {} });
+      if (error) setMessage(error.message);
+      else if (data?.error) setMessage(data.error);
+      else { setCatalogResult(data); setMessage("AutoSyncNG catalogue test completed."); }
     } catch (error) {
-      setAirtimeResult({ error: error.message });
-      notify("Purchase response could not be confirmed. Check your transaction history before retrying.");
-      await loadAccount(session.user);
-    } finally {
-      setAirtimeBusy(false);
+      setMessage(error instanceof Error ? error.message : "Could not connect to AutoSyncNG.");
     }
-  };
-
-  const approveDeposit = async (depositId) => {
-    if (!window.confirm("Approve this deposit and credit the customer's wallet?")) {
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-deposits-v2",
-        {
-          body: {
-            action: "approve",
-            deposit_id: depositId
-          }
-        }
-      );
-
-      if (error) throw error;
-
-      if (data?.error) throw new Error(data.error);
-
-      await loadPendingDeposits();
-      if (session?.user) await loadAccount(session.user);
-
-      notify("Deposit approval request completed.");
-    } catch (error) {
-      notify(error.message || "Could not approve deposit.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const rejectDeposit = async (depositId) => {
-    if (!window.confirm("Reject this deposit request?")) return;
-
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-deposits-v2",
-        {
-          body: {
-            action: "reject",
-            deposit_id: depositId
-          }
-        }
-      );
-
-      if (error) throw error;
-
-      if (data?.error) throw new Error(data.error);
-
-      await loadPendingDeposits();
-      notify("Deposit rejection request completed.");
-    } catch (error) {
-      notify(error.message || "Could not reject deposit.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    setCatalogLoading(false);
+  }
 
   const money = value => "₦" + Number(value || 0).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    minimumFractionDigits: 2, maximumFractionDigits: 2
   });
 
+  function go(destination) {
+    setPage(destination); setMessage(""); setShowMenu(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   const button = "st-btn";
-  const input = "st-input";  return (
+  const input = "st-input";
+
+  return (
     <div className="st-app">
       <style>{styles}</style>
-
       <header className="st-header">
         <div className="st-nav">
-          <button className="st-brand" onClick={() => go("home")}>
-            <span>SODIQ</span> TELECOM
-          </button>
-
+          <button className="st-brand" onClick={() => go("home")}><span>SODIQ</span> TELECOM</button>
           <div className="st-navlinks">
             <button onClick={() => go("home")}>Home</button>
-            <button onClick={() => go("dashboard")}>Dashboard</button>
-            <button onClick={() => go("deposit")}>Fund Wallet</button>
-            <button onClick={() => go("airtime")}>Airtime</button>
-            {profile?.role === "admin" &&
-              <button onClick={() => go("admin")}>Admin</button>}
-            {session
-              ? <button className={button} onClick={logout}>Logout</button>
-              : <>
-                  <button onClick={() => go("login")}>Login</button>
-                  <button className={button} onClick={() => go("register")}>
-                    Create Account
-                  </button>
-                </>}
+            {session && <button onClick={() => go("dashboard")}>Dashboard</button>}
+            <button onClick={() => {
+              go("home");
+              setTimeout(() => document.getElementById("services")?.scrollIntoView({ behavior: "smooth" }), 100);
+            }}>Services</button>
+            <a href={WHATSAPP} style={{ color: "#53675a", textDecoration: "none", fontWeight: 650 }}>Support</a>
+            {session ? <button className={button} onClick={logout}><LogOut size={16} /> Logout</button> : <>
+              <button onClick={() => go("login")}>Login</button>
+              <button className={button} onClick={() => go("register")}>Create Account</button>
+            </>}
           </div>
-
-          <button className="st-menu" onClick={() => setShowMenu(!showMenu)}>
-            {showMenu ? <X /> : <Menu />}
+          <button className="st-menu" onClick={() => setShowMenu(!showMenu)} aria-label="Toggle menu">
+            {showMenu ? <X size={23} /> : <Menu size={23} />}
           </button>
         </div>
-
-        {showMenu && (
-          <div className="st-mobile-menu">
-            <button onClick={() => go("home")}>Home</button>
+        {showMenu && <nav className="st-mobile-menu">
+          <button onClick={() => go("home")}>Home</button>
+          {session ? <>
             <button onClick={() => go("dashboard")}>Dashboard</button>
             <button onClick={() => go("deposit")}>Fund Wallet</button>
-            <button onClick={() => go("airtime")}>Buy Airtime</button>
-            {profile?.role === "admin" &&
-              <button onClick={() => go("admin")}>Admin Panel</button>}
-            {session
-              ? <button onClick={logout}>Logout</button>
-              : <button onClick={() => go("login")}>Login</button>}
-          </div>
-        )}
+            {profile?.role === "admin" && <button onClick={() => go("admin")}>Admin Panel</button>}
+            <button onClick={logout}>Logout</button>
+          </> : <>
+            <button onClick={() => go("login")}>Login</button>
+            <button onClick={() => go("register")}>Create Account</button>
+          </>}
+          <a href={WHATSAPP} style={{ padding: 12, color: "#15803d" }}>Contact Support</a>
+        </nav>}
       </header>
 
       <main className="st-container">
         {message && <div className="st-message">{message}</div>}
 
-        {/* HOME */}
         {page === "home" && <>
           <section className="st-hero">
             <div>
-              <div className="st-eyebrow">
-                <Activity size={14} /> YOUR DIGITAL PAYMENT PLATFORM
-              </div>
+              <div className="st-eyebrow"><Activity size={14} /> YOUR DIGITAL PAYMENT PLATFORM</div>
               <h1>Your digital world.<br /><span>One platform.</span></h1>
-              <p>
-                Buy airtime, access data services and manage your digital
-                payments with Sodiq Telecom Services.
-              </p>
+              <p>Buy airtime, subscribe to data, pay bills and access digital services with Sodiq Telecom Services. Simple, convenient and reliable.</p>
               <div className="st-hero-actions">
-                <button className={button}
-                  onClick={() => go(session ? "dashboard" : "register")}>
-                  Get Started <ArrowRight size={17} />
-                </button>
-                <button className="st-btn st-btn-light"
-                  onClick={() => go("login")}>Login</button>
+                <button className={button} onClick={() => go(session ? "dashboard" : "register")}>Get Started <ArrowRight size={17} /></button>
+                <button className="st-btn st-btn-light" onClick={() => go("login")}>Login to Account</button>
               </div>
             </div>
             <div className="st-hero-art">
-              <div className="st-art-circle">
-                <Globe size={105} />
-              </div>
-              <div className="st-float-tag st-tag-one">
-                <Wifi size={15} /> Airtime & Data
-              </div>
-              <div className="st-float-tag st-tag-two">
-                <ShieldCheck size={15} /> Secure Payments
-              </div>
+              <div className="st-art-circle"><Globe size={105} strokeWidth={1.2} /></div>
+              <div className="st-float-tag st-tag-one"><Wifi size={15} color="#16a34a" /> Data & Airtime</div>
+              <div className="st-float-tag st-tag-two"><ShieldCheck size={15} color="#16a34a" /> Secure Payments</div>
             </div>
           </section>
 
           <section className="st-section" id="services">
-            <div className="st-section-head">
-              <div>
-                <h2>Our Services</h2>
-                <p>Explore our available services.</p>
-              </div>
-            </div>
-
+            <div className="st-section-head"><div><h2>Our Services</h2><p>Explore the services on our platform.</p></div><Sparkles color="#16a34a" size={23} /></div>
             <div className="st-grid">
               {services.map((item, index) => {
                 const Icon = item.icon;
-                return (
-                  <button className="st-card st-service-card"
-                    key={item.title}
-                    style={{ textAlign: "left", width: "100%" }}
-                    onClick={() => {
-                      if (item.title === "Buy Airtime")
-                        go(session ? "airtime" : "login");
-                      else
-                        notify(item.title + " is coming soon.");
-                    }}>
-                    <div className="st-service-icon"
-                      style={{ color: item.color }}>
-                      <Icon size={26} />
-                    </div>
-                    <h3>{item.title}</h3>
-                    <p>{item.desc}</p>
-                    <small style={{
-                      display: "block", marginTop: 12,
-                      color: "#15803d", fontWeight: 800
-                    }}>
-                      {item.title === "Buy Airtime" ? "BUY NOW →" : "COMING SOON"}
-                    </small>
-                  </button>
-                );
+                return <button type="button" className="st-card st-service-card" key={item.title} onClick={() => {
+                  if (item.key === "airtime") { go(session ? "dashboard" : "login"); return; }
+                  if (["referral", "gifting", "giveaway"].includes(item.key) && !session) { go("login"); return; }
+                  go(item.key);
+                }} style={{ animationDelay: `${index * 80}ms`, textAlign: "left", width: "100%", cursor: "pointer" }}>
+                  <div className="st-service-icon" style={{ color: item.color }}><Icon size={25} /></div>
+                  <h3>{item.title}</h3>
+                  <p>{item.desc}</p>
+                  <small style={{ display: "block", marginTop: 13, color: item.color, fontWeight: 800 }}>{item.status}</small>
+                </button>;
               })}
             </div>
           </section>
 
-          <div className="st-feature">
-            <div className="st-feature-icon"><ShieldCheck size={29} /></div>
-            <div>
-              <h3>Secure wallet funding</h3>
-              <p>Your deposit is reviewed by the administrator before
-                your wallet is credited.</p>
+          <section className="st-feature">
+            <div className="st-feature-icon"><ShieldCheck size={25} /></div>
+            <div><h3>Payments with clarity</h3><p>Wallet funding is manually reviewed before your balance is credited. Always confirm your transfer before submitting a deposit request.</p></div>
+          </section>
+        </>}        {page === "register" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><User size={14} /> CREATE YOUR ACCOUNT</div>
+          <h2>Join Sodiq Telecom</h2>
+          <p>Create an account to access our digital services.</p>
+          <form onSubmit={register}>
+            <label className="st-label">Full Name</label>
+            <input className={input} placeholder="Enter your full name" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} required />
+            <label className="st-label">Username</label>
+            <input className={input} placeholder="Choose a username" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} required />
+            <label className="st-label">Gender</label>
+            <select className={input} value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} required>
+              <option value="">Select gender</option><option value="Male">Male</option><option value="Female">Female</option>
+            </select>
+            <label className="st-label">Phone Number</label>
+            <input className={input} placeholder="08012345678" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} required />
+            <label className="st-label">Email Address</label>
+            <input className={input} type="email" placeholder="you@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
+            <label className="st-label">Password</label>
+            <input className={input} type="password" placeholder="At least 6 characters" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required />
+            <button className={button} type="submit" disabled={loading} style={{ width: "100%" }}>{loading ? "Creating account..." : "Create Account"}</button>
+          </form>
+          <p style={{ textAlign: "center", marginTop: 20 }}>Already registered? <button style={textLink} onClick={() => go("login")}>Login</button></p>
+        </section>}
+
+        {page === "login" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Lock size={14} /> SECURE LOGIN</div>
+          <h2>Welcome Back</h2>
+          <p>Login to access your Sodiq Telecom account.</p>
+          <form onSubmit={login}>
+            <label className="st-label">Email Address</label>
+            <input className={input} type="email" placeholder="Enter your email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
+            <label className="st-label">Password</label>
+            <input className={input} type="password" placeholder="Enter your password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required />
+            <button className={button} type="submit" disabled={loading} style={{ width: "100%" }}>{loading ? "Signing in..." : "Login"}</button>
+          </form>
+          <p style={{ textAlign: "center", marginTop: 20 }}>New here? <button style={textLink} onClick={() => go("register")}>Create an account</button></p>
+        </section>}
+
+        {page === "dashboard" && session && <>
+          <div className="st-dashboard-top">
+            <div className="st-profile-row">
+              <div className="st-avatar"><User size={25} /></div>
+              <div><span className="st-muted">Welcome back,</span><h3>{profile?.full_name || session.user.user_metadata?.full_name || "Customer"}</h3><p>{session.user.email}</p></div>
             </div>
+            <button className="st-btn st-btn-light" onClick={() => loadAccount(session.user)}><RefreshCw size={15} /> Refresh</button>
           </div>
+
+          <section className="st-card st-wallet">
+            <div className="st-wallet-top"><span><Wallet size={18} /> Wallet Balance</span><button className="st-eye-button" onClick={() => setShowBalance(!showBalance)}>{showBalance ? <Eye size={19} /> : <EyeOff size={19} />}</button></div>
+            <h2>{showBalance ? money(balance) : "₦ ••••••"}</h2>
+            <button className={button} onClick={() => go("deposit")}><CreditCard size={16} /> Fund Wallet</button>
+          </section>
+
+          <section className="st-section">
+            <div className="st-section-head"><div><h2>Quick Actions</h2><p>Choose what you want to do.</p></div></div>
+            <div className="st-actions-grid">
+              <button className="st-action" onClick={() => go("airtime")}><Smartphone size={24} />Buy Airtime</button>
+              <button className="st-action" onClick={() => go("data")}><Wifi size={24} />Buy Data</button>
+              <button className="st-action" onClick={() => go("deposit")}><Wallet size={24} />Fund Wallet</button>
+              <button className="st-action" onClick={() => go("referral")}><Gift size={24} />Referral</button>
+              <button className="st-action" onClick={() => go("gifting")}><Gift size={24} />Gifting</button>
+              <button className="st-action" onClick={() => go("giveaway")}><Sparkles size={24} />Giveaway</button>
+            </div>
+          </section>
+
+          <section className="st-section">
+            <div className="st-section-head"><div><h2>Recent Deposits</h2><p>Your wallet funding requests.</p></div><button style={textLink} onClick={() => go("deposit")}>Fund wallet</button></div>
+            {deposits.length ? deposits.slice(0, 6).map(item => <div className="st-card st-history" key={item.id} style={{ marginBottom: 10 }}>
+              <div><strong>{money(item.amount)}</strong><p className="st-muted" style={{ margin: "5px 0 0", fontSize: 12 }}>{item.created_at ? new Date(item.created_at).toLocaleString() : "Deposit request"}</p></div>
+              <span className="st-status">{item.status || "pending"}</span>
+            </div>) : <div className="st-empty">No deposit requests yet.</div>}
+          </section>
+
+          {profile?.role === "admin" && <section className="st-section">
+            <div className="st-card">
+              <div className="st-dashboard-top"><div><span className="st-admin-label">ADMIN ACCESS</span><h2>Admin Panel</h2></div><button className={button} onClick={() => go("admin")}>Open Admin Panel</button></div>
+              <p className="st-muted">Review deposit requests and manage platform activities.</p>
+            </div>
+          </section>}
         </>}
 
-        {/* REGISTER */}
-        {page === "register" && (
-          <section className="st-form-wrap">
-            <div className="st-eyebrow">ACCOUNT REGISTRATION</div>
-            <h2>Create your account</h2>
-            <p>Join Sodiq Telecom Services.</p>
-
-            <form onSubmit={register}>
-              <label className="st-label">Full Name</label>
-              <input className={input} required
-                value={form.full_name}
-                onChange={e => setForm({ ...form, full_name: e.target.value })} />
-
-              <label className="st-label">Username</label>
-              <input className={input} required
-                value={form.username}
-                onChange={e => setForm({ ...form, username: e.target.value })} />
-
-              <label className="st-label">Gender</label>
-              <select className={input} required value={form.gender}
-                onChange={e => setForm({ ...form, gender: e.target.value })}>
-                <option value="">Select gender</option>
-                <option>Male</option>
-                <option>Female</option>
-                <option>Other</option>
-              </select>
-
-              <label className="st-label">Phone Number</label>
-              <input className={input} required value={form.phone}
-                onChange={e => setForm({ ...form, phone: e.target.value })} />
-
-              <label className="st-label">Email Address</label>
-              <input className={input} type="email" required
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })} />
-
-              <label className="st-label">Password</label>
-              <input className={input} type="password" required
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })} />
-
-              <label className="st-label">Confirm Password</label>
-              <input className={input} type="password" required
-                value={form.confirm_password}
-                onChange={e => setForm({ ...form, confirm_password: e.target.value })} />
-
-              <label className="st-label">4-digit Transaction PIN</label>
-              <input className={input} type="password" inputMode="numeric"
-                maxLength={4} required value={form.transaction_pin}
-                onChange={e => setForm({
-                  ...form,
-                  transaction_pin: e.target.value.replace(/\D/g, "").slice(0, 4)
-                })} />
-
-              <button className={button} disabled={loading}
-                style={{ width: "100%" }}>
-                {loading ? "Creating account..." : "Create Account"}
-              </button>
-            </form>
-
-            <p style={{ textAlign: "center", marginTop: 20 }}>
-              Already registered?{" "}
-              <button style={textLink} onClick={() => go("login")}>Login</button>
-            </p>
-          </section>
-        )}
-
-        {/* LOGIN */}
-        {page === "login" && (
-          <section className="st-form-wrap">
-            <div className="st-eyebrow">SECURE LOGIN</div>
-            <h2>Welcome back</h2>
-            <p>Login to your account.</p>
-
-            <form onSubmit={login}>
-              <label className="st-label">Email Address</label>
-              <input className={input} type="email" required
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })} />
-
-              <label className="st-label">Password</label>
-              <input className={input} type="password" required
-                value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })} />
-
-              <button className={button} disabled={loading}
-                style={{ width: "100%" }}>
-                {loading ? "Logging in..." : "Login"}
-              </button>
-            </form>
-
-            <p style={{ textAlign: "center", marginTop: 20 }}>
-              New customer?{" "}
-              <button style={textLink} onClick={() => go("register")}>
-                Create Account
-              </button>
-            </p>
-          </section>
-        )}
-
-        {/* DASHBOARD */}
-        {page === "dashboard" && session && (
-          <>
-            <div className="st-dashboard-top">
-              <div>
-                <div className="st-eyebrow">CUSTOMER DASHBOARD</div>
-                <h1>My Dashboard</h1>
-                <p className="st-muted">
-                  Welcome, {profile?.full_name || "Customer"}.
-                </p>
-              </div>
-              <button className="st-btn st-btn-light"
-                onClick={() => loadAccount(session.user)}>
-                <RefreshCw size={16} /> Refresh
-              </button>
-            </div>
-
-            <div className="st-grid">
-              <div className="st-card">
-                <div className="st-profile-row">
-                  <div className="st-avatar"><User size={25} /></div>
-                  <div>
-                    <h3>{profile?.full_name || session.user.email}</h3>
-                    <p>{session.user.email}</p>
-                  </div>
-                </div>
-                <p className="st-muted">
-                  Username: {profile?.username || "Customer"}
-                </p>
-                {profile?.role === "admin" &&
-                  <span className="st-admin-label">Administrator</span>}
-              </div>
-
-              <div className="st-card st-wallet">
-                <div className="st-wallet-top">
-                  <Wallet size={28} />
-                  <button className="st-eye-button"
-                    onClick={() => setShowBalance(!showBalance)}>
-                    {showBalance ? <Eye /> : <EyeOff />}
-                  </button>
-                </div>
-                <p>AVAILABLE WALLET BALANCE</p>
-                <h2>{showBalance ? money(balance) : "₦ ••••••"}</h2>
-                <button className={button} onClick={() => go("deposit")}>
-                  Fund Wallet
-                </button>
-              </div>
-            </div>
-
-            <section className="st-section">
-              <div className="st-section-head">
-                <div><h2>Quick Actions</h2></div>
-              </div>
-              <div className="st-actions-grid">
-                <button className="st-action" onClick={() => go("airtime")}>
-                  <Smartphone /> Buy Airtime
-                </button>
-                <button className="st-action" onClick={() => go("deposit")}>
-                  <Wallet /> Fund Wallet
-                </button>
-                <button className="st-action" onClick={() => go("admin")}>
-                  <ShieldCheck /> Admin Panel
-                </button>
-              </div>
-            </section>
-
-            <section className="st-section">
-              <h2>Deposit History</h2>
-              {deposits.length === 0
-                ? <div className="st-empty">No deposits yet.</div>
-                : deposits.map(item => (
-                  <div className="st-card" key={item.id}
-                    style={{ marginBottom: 12 }}>
-                    <div className="st-history">
-                      <strong>{money(item.amount)}</strong>
-                      <span className="st-status">{item.status}</span>
-                    </div>
-                    <p className="st-muted">
-                      Reference: {item.payment_reference || "N/A"}
-                    </p>
-                  </div>
-                ))}
-            </section>
-          </>
-        )}
-
-        {/* FUND WALLET */}
-        {page === "deposit" && session && (
-          <section className="st-form-wrap">
-            <div className="st-eyebrow">WALLET FUNDING</div>
-            <h2>Fund your wallet</h2>
-            <p>Transfer to the account below and submit your payment details.</p>
-
-            <div className="st-opay-card">
-              <div className="st-opay-brand">OPay</div>
-              <p className="st-opay-number">8114095631</p>
-              <h3 className="st-opay-name">Ogunlowo Sodiq Ayomiposi</h3>
-              <p>Bank: OPay</p>
-              <p className="st-copy-note">
-                Your wallet will only be credited after admin verification.
-              </p>
-            </div>
-
-            <form onSubmit={requestDeposit}>
-              <label className="st-label">Amount (₦)</label>
-              <input className={input} type="number" min="100" required
-                value={depositForm.amount}
-                onChange={e => setDepositForm({
-                  ...depositForm, amount: e.target.value
-                })} />
-
-              <label className="st-label">Payment Reference</label>
-              <input className={input} required
-                value={depositForm.reference}
-                onChange={e => setDepositForm({
-                  ...depositForm, reference: e.target.value
-                })} />
-
-              <button className={button} disabled={loading}
-                style={{ width: "100%" }}>
-                {loading ? "Submitting..." : "Submit Deposit Request"}
-              </button>
-            </form>
-          </section>
-        )}
-
-        {/* AIRTIME */}
-        {page === "airtime" && session && (
-          <section className="st-form-wrap">
-            <div className="st-eyebrow">AIRTIME TOP-UP</div>
-            <h2>Buy Airtime</h2>
-            <p>Purchase airtime using your wallet.</p>
-
-            <div className="st-card">
-              <p className="st-muted">Available Balance</p>
-              <h2 style={{ color: "#15803d" }}>{money(balance)}</h2>
-            </div>
-
-            <form onSubmit={purchaseAirtime}>
-              <label className="st-label">AutoSyncNG Product ID</label>
-              <input className={input} required
-                value={airtimeForm.product_id}
-                onChange={e => setAirtimeForm({
-                  ...airtimeForm, product_id: e.target.value
-                })}
-                placeholder="Enter exact supplier product ID" />
-
-              <label className="st-label">Phone Number</label>
-              <input className={input} type="tel" required maxLength={11}
-                placeholder="08012345678"
-                value={airtimeForm.phone}
-                onChange={e => setAirtimeForm({
-                  ...airtimeForm,
-                  phone: e.target.value.replace(/\D/g, "").slice(0, 11)
-                })} />
-
-              <label className="st-label">Amount (₦)</label>
-              <input className={input} type="number" min="1"
-                max="100000" step="1" required
-                value={airtimeForm.amount}
-                onChange={e => setAirtimeForm({
-                  ...airtimeForm, amount: e.target.value
-                })} />
-
-              <button className={button} disabled={airtimeBusy}
-                style={{ width: "100%" }}>
-                {airtimeBusy ? "Processing..." : "Purchase Airtime"}
-              </button>
-            </form>
-
-            {airtimeResult && (
-              <pre className="st-provider-output">
-                {JSON.stringify(airtimeResult, null, 2)}
-              </pre>
-            )}
-
-            <p className="st-copy-note">
-              If a transaction is pending, check its status before attempting
-              another purchase.
-            </p>
-          </section>
-        )}
-
-        {/* ADMIN */}
-        {page === "admin" && session && profile?.role === "admin" && (
-          <>
-            <div className="st-dashboard-top">
-              <div>
-                <div className="st-eyebrow">ADMINISTRATION</div>
-                <h1>Admin Panel</h1>
-                <p className="st-muted">Manage deposit requests.</p>
-              </div>
-              <button className="st-btn st-btn-light"
-                onClick={loadPendingDeposits}>
-                <RefreshCw size={16} /> Refresh
-              </button>
-            </div>
-
-            <div className="st-card">
-              <h2>Pending Deposits ({pendingDeposits.length})</h2>
-
-              {pendingDeposits.length === 0
-                ? <div className="st-empty">No pending deposits.</div>
-                : pendingDeposits.map(item => (
-                  <div className="st-card" key={item.id}
-                    style={{ marginTop: 15 }}>
-                    <h3>{money(item.amount)}</h3>
-                    <p>Reference: {item.payment_reference || "N/A"}</p>
-                    <p className="st-muted">
-                      {new Date(item.created_at).toLocaleString()}
-                    </p>
-                    <div style={{
-                      display: "flex", flexWrap: "wrap", gap: 10
-                    }}>
-                      <button className={button} disabled={loading}
-                        onClick={() => approveDeposit(item.id)}>
-                        <CheckCircle size={16} /> Approve
-                      </button>
-                      <button className={button} disabled={loading}
-                        style={{ background: "#b42318", borderColor: "#b42318" }}
-                        onClick={() => rejectDeposit(item.id)}>
-                        <XCircle size={16} /> Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            <div className="st-card" style={{ marginTop: 20 }}>
-              <h2>AutoSyncNG Connection</h2>
-              <p className="st-muted">
-                Test the supplier catalogue connection.
-              </p>
-              <button className={button} disabled={catalogLoading}
-                onClick={testCatalog}>
-                <RefreshCw size={16} />
-                {catalogLoading ? "Testing..." : "Test Admin Connection"}
-              </button>
-
-              {catalogResult && (
-                <pre className="st-provider-output"
-                  style={{ marginTop: 15 }}>
-                  {JSON.stringify(catalogResult, null, 2)}
-                </pre>
-              )}
-            </div>
-          </>
-        )}
-
-        {!session &&
-          ["dashboard", "deposit", "admin", "airtime"].includes(page) && (
-            <div className="st-form-wrap">
-              <h2>Login required</h2>
-              <p>Please log in to access this section.</p>
-              <button className={button} onClick={() => go("login")}>
-                Login
-              </button>
-            </div>
-          )}
-
-        {session && page === "admin" && profile?.role !== "admin" && (
-          <div className="st-form-wrap">
-            <h2>Access restricted</h2>
-            <p>This page is only available to administrators.</p>
-            <button className={button} onClick={() => go("dashboard")}>
-              Return to Dashboard
-            </button>
+        {page === "deposit" && session && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Wallet size={14} /> MANUAL WALLET FUNDING</div>
+          <h2>Fund Your Wallet</h2>
+          <p>Transfer to the OPay account below, then submit your payment reference. Your wallet is credited after admin verification.</p>
+          <div className="st-opay-card">
+            <div className="st-opay-top"><div className="st-opay-brand"><div className="st-opay-mark"></div>OPay</div><span className="st-admin-label">TRANSFER</span></div>
+            <p className="st-copy-note" style={{ marginTop: 20 }}>OPay account details</p>
+            <h2 className="st-opay-number">Use your configured account</h2>
+            <p className="st-opay-name">Confirm the correct account number and account name with the platform administrator before transferring.</p>
+            <p className="st-copy-note">Do not transfer to an account unless the administrator has confirmed its details.</p>
           </div>
-        )}
+          <form onSubmit={submitDeposit}>
+            <label className="st-label">Amount (₦)</label>
+            <input className={input} type="number" min="1" step="1" placeholder="Enter amount" value={depositForm.amount} onChange={e => setDepositForm({ ...depositForm, amount: e.target.value })} required />
+            <label className="st-label">Transfer Reference</label>
+            <input className={input} placeholder="Enter your transfer reference" value={depositForm.reference} onChange={e => setDepositForm({ ...depositForm, reference: e.target.value })} required />
+            <button className={button} type="submit" disabled={loading} style={{ width: "100%" }}>{loading ? "Submitting..." : "Submit Deposit Request"}</button>
+          </form>
+        </section>}
+
+        {page === "admin" && session && profile?.role === "admin" && <>
+          <div className="st-dashboard-top"><div><span className="st-admin-label">ADMIN PANEL</span><h1>Manage Deposits</h1><p className="st-muted">Review customer wallet funding requests.</p></div><button className="st-btn st-btn-light" onClick={loadPendingDeposits}><RefreshCw size={15} /> Refresh</button></div>
+          {pendingDeposits.length ? pendingDeposits.map(item => <div className="st-card" key={item.id} style={{ marginBottom: 13 }}>
+            <div className="st-history"><div><h3 style={{ margin: "0 0 5px" }}>{money(item.amount)}</h3><p className="st-muted" style={{ margin: 0, fontSize: 12 }}>Reference: {item.payment_reference || item.reference || "Not provided"}</p></div><span className="st-status">{item.status || "pending"}</span></div>
+            <p className="st-muted" style={{ fontSize: 12 }}>Customer ID: {item.user_id || "Unavailable"}</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className={button} onClick={() => processDeposit(item.id, "approve")} disabled={loading}><CheckCircle size={15} /> Approve</button>
+              <button className="st-btn st-btn-light" onClick={() => processDeposit(item.id, "reject")} disabled={loading}><XCircle size={15} /> Reject</button>
+            </div>
+          </div>) : <div className="st-empty">No pending deposits returned. Use Refresh to check again.</div>}
+        </>}
+
+        {page === "admin" && session && profile?.role !== "admin" && <div className="st-empty">You do not have administrator access.</div>}
+
+        {page === "airtime" && session && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Smartphone size={14} /> AIRTIME</div>
+          <h2>Buy Airtime</h2>
+          <p>The airtime purchase integration is handled by the configured AutoSyncNG function.</p>
+          <p className="st-muted">Use the airtime purchase section already connected in your existing working version. This replacement screen does not submit an airtime purchase.</p>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "data" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Wifi size={14} /> DATA SUBSCRIPTIONS</div>
+          <h2>Buy Data</h2><p>Data purchase will be available after the AutoSyncNG data catalogue and purchase endpoint are connected.</p>
+          <div className="st-empty">Data supplier integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "cable" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Tv size={14} /> CABLE TV</div>
+          <h2>Cable TV</h2><p>Support for DStv, GOtv and StarTimes will be enabled after supplier configuration.</p>
+          <div className="st-empty">Cable TV integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "electricity" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Zap size={14} /> ELECTRICITY</div>
+          <h2>Electricity Bills</h2><p>Electricity bill payment will be enabled after the supplier integration is configured.</p>
+          <div className="st-empty">Electricity integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "exam" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Gift size={14} /> EXAM PINS</div>
+          <h2>Exam Pins</h2><p>Exam PIN sales will be enabled after supplier product IDs and purchase endpoints are configured.</p>
+          <div className="st-empty">Exam PIN integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "recharge" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><CreditCard size={14} /> RECHARGE CARDS</div>
+          <h2>Recharge Cards</h2><p>Recharge card PIN generation will be enabled after the supplier API is configured.</p>
+          <div className="st-empty">Recharge card integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "sms" && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Headphones size={14} /> BULK SMS</div>
+          <h2>Bulk SMS</h2><p>Bulk SMS will be enabled after the messaging supplier is connected.</p>
+          <div className="st-empty">Bulk SMS integration is not active yet. No payment will be taken.</div>
+          <button className="st-btn st-btn-light" onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}        {page === "referral" && session && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Gift size={14} /> REFERRAL PROGRAMME</div>
+          <h2>Invite Friends</h2>
+          <p>Share Sodiq Telecom with friends and family. Referral rewards will be activated when the referral tracking system is connected.</p>
+          <div className="st-card">
+            <h3>Your Referral Details</h3>
+            <p className="st-muted">Your account email:</p>
+            <strong>{session.user.email}</strong>
+            <p className="st-muted" style={{ marginTop: 15 }}>Referral code generation is awaiting backend setup.</p>
+          </div>
+          <div className="st-empty" style={{ marginTop: 15 }}>
+            Referral rewards are not active yet. No rewards will be credited until the system is configured.
+          </div>
+          <button className="st-btn st-btn-light" style={{ marginTop: 15 }} onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "gifting" && session && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Gift size={14} /> CUSTOMER GIFTING</div>
+          <h2>Send a Gift</h2>
+          <p>Give someone a special surprise through Sodiq Telecom.</p>
+          <div className="st-card">
+            <div className="st-service-icon"><Gift size={25} /></div>
+            <h3>Gifting Centre</h3>
+            <p>Wallet gifts and airtime gifts will be supported after secure recipient verification and transfer functions are configured.</p>
+          </div>
+          <div className="st-empty" style={{ marginTop: 15 }}>
+            Gifting is not active yet. No wallet transfers will be made from this page.
+          </div>
+          <button className="st-btn st-btn-light" style={{ marginTop: 15 }} onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {page === "giveaway" && session && <section className="st-form-wrap">
+          <div className="st-eyebrow"><Sparkles size={14} /> SPECIAL GIVEAWAYS</div>
+          <h2>Giveaway Centre</h2>
+          <p>Stay updated on special promotions and rewards from Sodiq Telecom Services.</p>
+          <div className="st-card">
+            <div className="st-service-icon"><Sparkles size={25} /></div>
+            <h3>Something Special Is Coming!</h3>
+            <p>Giveaway announcements and participation details will appear here when published by the administrator.</p>
+          </div>
+          <div className="st-empty" style={{ marginTop: 15 }}>
+            There are no published giveaways yet.
+          </div>
+          <button className="st-btn st-btn-light" style={{ marginTop: 15 }} onClick={() => go("dashboard")}>Back to Dashboard</button>
+        </section>}
+
+        {!session && !["home", "login", "register"].includes(page) &&
+          <section className="st-form-wrap">
+            <div className="st-eyebrow"><Lock size={14} /> ACCOUNT REQUIRED</div>
+            <h2>Please Login</h2>
+            <p>You need to log in to access this section.</p>
+            <button className="st-btn" onClick={() => go("login")}>Login to Continue</button>
+          </section>}
       </main>
 
-      {session && (
-        <nav className="st-bottom-nav">
-          <button onClick={() => go("home")}><Home size={20} />Home</button>
-          <button onClick={() => go("dashboard")}>
-            <LayoutDashboard size={20} />Dashboard
-          </button>
-          <button onClick={() => go("airtime")}>
-            <Smartphone size={20} />Airtime
-          </button>
-          <button onClick={() => go("deposit")}>
-            <Wallet size={20} />Wallet
-          </button>
-          <button onClick={() => window.open(WHATSAPP, "_blank")}>
-            <Headphones size={20} />Support
-          </button>
-        </nav>
-      )}
+      {session && <nav className="st-bottom-nav">
+        <button className={page === "home" ? "active" : ""} onClick={() => go("home")}><Home size={19} />Home</button>
+        <button className={page === "dashboard" ? "active" : ""} onClick={() => go("dashboard")}><LayoutDashboard size={19} />Dashboard</button>
+        <button className={page === "deposit" ? "active" : ""} onClick={() => go("deposit")}><Wallet size={19} />Wallet</button>
+        <button className={page === "referral" ? "active" : ""} onClick={() => go("referral")}><Gift size={19} />Referral</button>
+      </nav>}
 
       <footer className="st-footer">
         <strong>SODIQ TELECOM SERVICES</strong>
-        <p>Reliable digital services. Simple connectivity.</p>
-        <a href={WHATSAPP}>Contact Support</a>
-        <p style={{ fontSize: 12, marginTop: 20 }}>
-          © 2026 Sodiq Telecom Services. All rights reserved.
-        </p>
+        <p>Digital services made simple.</p>
+        <p>Need assistance? <a href={WHATSAPP} target="_blank" rel="noreferrer">Contact Support on WhatsApp</a></p>
+        <p style={{ fontSize: 12 }}>© {new Date().getFullYear()} Sodiq Telecom Services. All rights reserved.</p>
       </footer>
     </div>
   );
