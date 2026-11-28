@@ -6,7 +6,7 @@ import {
   Lock, Activity, X, Eye, EyeOff, Home, Sparkles
 } from "lucide-react";
 import { supabase } from "./supabase";
-
+import PaystackWallet from "./PaystackWallet";
 const WHATSAPP = "https://wa.me/2348114095631";
 
 const services = [
