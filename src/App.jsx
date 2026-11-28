@@ -566,25 +566,14 @@ useEffect(() => {
           </section>}
         </>}
 
-        {page === "deposit" && session && <section className="st-form-wrap">
-          <div className="st-eyebrow"><Wallet size={14} /> MANUAL WALLET FUNDING</div>
-          <h2>Fund Your Wallet</h2>
-          <p>Transfer to the OPay account below, then submit your payment reference. Your wallet is credited after admin verification.</p>
-          <div className="st-opay-card">
-            <div className="st-opay-top"><div className="st-opay-brand"><div className="st-opay-mark"></div>OPay</div><span className="st-admin-label">TRANSFER</span></div>
-            <p className="st-copy-note" style={{ marginTop: 20 }}>OPay account details</p>
-            <h2 className="st-opay-number">Use your configured account</h2>
-            <p className="st-opay-name">Confirm the correct account number and account name with the platform administrator before transferring.</p>
-            <p className="st-copy-note">Do not transfer to an account unless the administrator has confirmed its details.</p>
-          </div>
-          <form onSubmit={submitDeposit}>
-            <label className="st-label">Amount (₦)</label>
-            <input className={input} type="number" min="1" step="1" placeholder="Enter amount" value={depositForm.amount} onChange={e => setDepositForm({ ...depositForm, amount: e.target.value })} required />
-            <label className="st-label">Transfer Reference</label>
-            <input className={input} placeholder="Enter your transfer reference" value={depositForm.reference} onChange={e => setDepositForm({ ...depositForm, reference: e.target.value })} required />
-            <button className={button} type="submit" disabled={loading} style={{ width: "100%" }}>{loading ? "Submitting..." : "Submit Deposit Request"}</button>
-          </form>
-        </section>}
+        {page === "deposit" && session && (
+  <PaystackWallet
+    onSuccess={async () => {
+      await loadAccount(session.user);
+    }}
+    onBack={() => go("dashboard")}
+  />
+)}
 
         {page === "admin" && session && profile?.role === "admin" && <>
           <div className="st-dashboard-top"><div><span className="st-admin-label">ADMIN PANEL</span><h1>Manage Deposits</h1><p className="st-muted">Review customer wallet funding requests.</p></div><button className="st-btn st-btn-light" onClick={loadPendingDeposits}><RefreshCw size={15} /> Refresh</button></div>
