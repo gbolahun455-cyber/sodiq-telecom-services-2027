@@ -287,7 +287,13 @@ const textLink = {
     });
     return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
 
+  if (params.has("reference") || params.has("trxref")) {
+    setPage("deposit");
+  }
+}, []);
   async function loadAccount(user) {
     if (!user) return;
     const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
